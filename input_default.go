@@ -2,18 +2,16 @@ package cwl
 
 import (
 	"fmt"
-	"reflect"
 )
 
 // InputDefault represents "default" field in an element of "inputs".
 type InputDefault struct {
 	Self interface{}
-	Kind reflect.Kind
 }
 
 // New constructs new "InputDefault".
 func (_ InputDefault) New(i interface{}) *InputDefault {
-	dest := &InputDefault{Self: i, Kind: reflect.TypeOf(i).Kind()}
+	dest := &InputDefault{Self: i}
 	return dest
 }
 
@@ -27,6 +25,8 @@ func (d *InputDefault) Flatten(binding *Binding) []string {
 		if ok && class == "File" {
 			flattened = append(flattened, fmt.Sprintf("%v", v["location"]))
 		}
+	case string:
+		flattened = append(flattened, d.Self.(string))
 	}
 	if binding != nil && binding.Prefix != "" {
 		flattened = append([]string{binding.Prefix}, flattened...)
