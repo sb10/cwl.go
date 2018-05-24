@@ -7,7 +7,7 @@ type StepOutput struct {
 }
 
 // NewList constructs a list of StepOutput from interface.
-func (_ StepOutput) NewList(i interface{}) []StepOutput {
+func (s StepOutput) NewList(i interface{}) []StepOutput {
 	dest := []StepOutput{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -19,7 +19,7 @@ func (_ StepOutput) NewList(i interface{}) []StepOutput {
 }
 
 // New constructs a StepOutput from interface.
-func (_ StepOutput) New(i interface{}) StepOutput {
+func (s StepOutput) New(i interface{}) StepOutput {
 	dest := StepOutput{}
 	switch x := i.(type) {
 	case string:

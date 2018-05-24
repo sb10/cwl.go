@@ -4,7 +4,7 @@ package cwl
 type Namespaces []Namespace
 
 // New constructs "Namespaces" struct.
-func (_ Namespaces) New(i interface{}) Namespaces {
+func (n Namespaces) New(i interface{}) Namespaces {
 	dest := []Namespace{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -27,7 +27,7 @@ func (_ Namespaces) New(i interface{}) Namespaces {
 type Namespace map[string]interface{}
 
 // New constructs a Namespace from any interface.
-func (_ Namespace) New(i interface{}) Namespace {
+func (n Namespace) New(i interface{}) Namespace {
 	dest := Namespace{}
 	switch x := i.(type) {
 	case map[string]interface{}:

@@ -4,7 +4,7 @@ package cwl
 type Schemas []string
 
 // New constructs "Schemas" struct.
-func (_ Schemas) New(i interface{}) Schemas {
+func (s Schemas) New(i interface{}) Schemas {
 	dest := Schemas{}
 	switch x := i.(type) {
 	case []interface{}:

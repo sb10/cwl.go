@@ -12,7 +12,7 @@ type InputDefault struct {
 }
 
 // New constructs new "InputDefault".
-func (_ InputDefault) New(i interface{}) *InputDefault {
+func (d InputDefault) New(i interface{}) *InputDefault {
 	dest := &InputDefault{Self: i, Kind: reflect.TypeOf(i).Kind()}
 	return dest
 }
@@ -23,9 +23,9 @@ func (d *InputDefault) Flatten(binding *Binding) []string {
 	switch v := d.Self.(type) {
 	case map[string]interface{}:
 		// TODO: more strict type casting ;(
-		class, ok := v["class"]
-		if ok && class == "File" {
-			flattened = append(flattened, fmt.Sprintf("%v", v["location"]))
+		class, ok := v[fieldClass]
+		if ok && class == typeFile {
+			flattened = append(flattened, fmt.Sprintf("%v", v[fieldLocation]))
 		}
 	case string:
 		flattened = append(flattened, d.Self.(string))

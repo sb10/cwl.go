@@ -19,7 +19,7 @@ type Type struct {
 
 // NewList constructs a list of Type from any interface.
 // It only handles []interface{}
-func (_ Type) NewList(i interface{}) []Type {
+func (t Type) NewList(i interface{}) []Type {
 	dest := []Type{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -33,7 +33,7 @@ func (_ Type) NewList(i interface{}) []Type {
 }
 
 // New constructs single Type struct from any interface.
-func (_ Type) New(i interface{}) Type {
+func (t Type) New(i interface{}) Type {
 	dest := Type{}
 	switch x := i.(type) {
 	case string:
@@ -41,17 +41,17 @@ func (_ Type) New(i interface{}) Type {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "type":
+			case fieldType:
 				dest.Type = v.(string)
-			case "items":
+			case fieldItems:
 				dest.Items = Type{}.NewList(v)
-			case "inputBinding":
+			case fieldInputBinding:
 				dest.Binding = Binding{}.New(v)
-			case "fields":
+			case fieldFields:
 				dest.Fields = Fields{}.New(v)
-			case "symbols":
+			case fieldSymbols:
 				dest.Symbols = StringArrayable(v)
-			case "name":
+			case fieldName:
 				dest.Name = v.(string)
 			}
 		}

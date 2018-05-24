@@ -1,6 +1,6 @@
 package cwl
 
-// Output represents and conbines "CommandOutputParameter" and "WorkflowOutputParameter"
+// Output represents and combines "CommandOutputParameter" and "WorkflowOutputParameter"
 // @see
 // - http://www.commonwl.org/v1.0/CommandLineTool.html#CommandOutputParameter
 // - http://www.commonwl.org/v1.0/Workflow.html#WorkflowOutputParameter
@@ -16,25 +16,25 @@ type Output struct {
 }
 
 // New constructs "Output" struct from interface.
-func (_ Output) New(i interface{}) Output {
+func (o Output) New(i interface{}) Output {
 	dest := Output{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "id":
+			case fieldID:
 				dest.ID = v.(string)
-			case "type":
+			case fieldType:
 				dest.Types = Type{}.NewList(v)
-			case "outputBinding":
+			case fieldOutputBinding:
 				dest.Binding = Binding{}.New(v)
-			case "outputSource":
+			case fieldOutputSource:
 				dest.Source = StringArrayable(v)
-			case "doc":
+			case fieldDoc:
 				dest.Doc = StringArrayable(v)
-			case "format":
+			case fieldFormat:
 				dest.Format = v.(string)
-			case "secondaryFiles":
+			case fieldSecondaryFiles:
 				dest.SecondaryFiles = SecondaryFile{}.NewList(v)
 			}
 		}
@@ -48,7 +48,7 @@ func (_ Output) New(i interface{}) Output {
 type Outputs []Output
 
 // New constructs "Outputs" struct.
-func (_ Outputs) New(i interface{}) Outputs {
+func (o Outputs) New(i interface{}) Outputs {
 	dest := Outputs{}
 	switch x := i.(type) {
 	case []interface{}:

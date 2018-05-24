@@ -4,7 +4,7 @@ package cwl
 type Steps []Step
 
 // New constructs "Steps" from interface.
-func (_ Steps) New(i interface{}) Steps {
+func (steps Steps) New(i interface{}) Steps {
 	dest := Steps{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -41,30 +41,30 @@ type Run struct {
 }
 
 // New constructs "Step" from interface.
-func (_ Step) New(i interface{}) Step {
+func (s Step) New(i interface{}) Step {
 	dest := Step{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "id":
+			case fieldID:
 				dest.ID = v.(string)
-			case "run":
+			case fieldRun:
 				switch x2 := v.(type) {
 				case string:
 					dest.Run.Value = x2
 				case map[string]interface{}:
 					dest.Run.Workflow = dest.Run.Workflow.AsStep(v)
 				}
-			case "in":
+			case fieldIn:
 				dest.In = StepInput{}.NewList(v)
-			case "out":
+			case fieldOut:
 				dest.Out = StepOutput{}.NewList(v)
-			case "requirements":
+			case fieldRequirements:
 				dest.Requirements = Requirements{}.New(v)
-			case "scatter":
+			case fieldScatter:
 				dest.Scatter = StringArrayable(v)
-			case "scatterMethod":
+			case fieldScatterMethod:
 				dest.ScatterMethod = v.(string)
 			}
 		}

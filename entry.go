@@ -19,7 +19,7 @@ type File struct {
 	Format  string
 }
 
-// Directory represents direcotry entry.
+// Directory represents directory entry.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#Directory
 type Directory struct {
 	Listing []Entry
@@ -34,7 +34,7 @@ type Dirent struct {
 }
 
 // NewList constructs a list of Entry from interface
-func (_ Entry) NewList(i interface{}) []Entry {
+func (e Entry) NewList(i interface{}) []Entry {
 	dest := []Entry{}
 	switch x := i.(type) {
 	case string:
@@ -48,7 +48,7 @@ func (_ Entry) NewList(i interface{}) []Entry {
 }
 
 // New constructs an Entry from interface
-func (_ Entry) New(i interface{}) Entry {
+func (e Entry) New(i interface{}) Entry {
 	dest := Entry{}
 	switch x := i.(type) {
 	case string:
@@ -56,11 +56,11 @@ func (_ Entry) New(i interface{}) Entry {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "entryname":
+			case fieldEntryName:
 				dest.EntryName = v.(string)
-			case "entry":
+			case fieldEntry:
 				dest.Entry = v.(string)
-			case "writable":
+			case fieldWritable:
 				dest.Writable = v.(bool)
 			}
 		}

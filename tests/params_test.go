@@ -3,8 +3,8 @@ package cwlgotest
 import (
 	"testing"
 
-	cwl "github.com/sb10/cwl.go"
 	. "github.com/otiai10/mint"
+	cwl "github.com/sb10/cwl.go"
 )
 
 func TestDecode_params(t *testing.T) {

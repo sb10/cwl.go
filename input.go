@@ -25,27 +25,27 @@ type Input struct {
 }
 
 // New constructs "Input" struct from interface{}.
-func (_ Input) New(i interface{}) Input {
+func (input Input) New(i interface{}) Input {
 	dest := Input{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "id":
+			case fieldID:
 				dest.ID = v.(string)
-			case "type":
+			case fieldType:
 				dest.Types = Type{}.NewList(v)
-			case "label":
+			case fieldLabel:
 				dest.Label = v.(string)
-			case "doc":
+			case fieldDoc:
 				dest.Doc = v.(string)
-			case "inputBinding":
+			case fieldInputBinding:
 				dest.Binding = Binding{}.New(v)
-			case "default":
+			case fieldDefault:
 				dest.Default = InputDefault{}.New(v)
-			case "format":
+			case fieldFormat:
 				dest.Format = v.(string)
-			case "secondaryFiles":
+			case fieldSecondaryFiles:
 				dest.SecondaryFiles = SecondaryFile{}.NewList(v)
 			}
 		}
@@ -63,13 +63,13 @@ func (_ Input) New(i interface{}) Input {
 func (input Input) flatten(typ Type, binding *Binding) []string {
 	flattened := []string{}
 	switch typ.Type {
-	case "int": // Array of Int
+	case typeInt: // Array of Int
 		tobejoined := []string{}
 		for _, e := range input.Provided.([]interface{}) {
 			tobejoined = append(tobejoined, fmt.Sprintf("%v", e))
 		}
 		flattened = append(flattened, strings.Join(tobejoined, input.Binding.Separator))
-	case "File": // Array of Files
+	case typeFile: // Array of Files
 		switch arr := input.Provided.(type) {
 		case []string:
 			// TODO:
@@ -81,7 +81,7 @@ func (input Input) flatten(typ Type, binding *Binding) []string {
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					separated = append(separated, fmt.Sprintf("%v", v["location"]))
+					separated = append(separated, fmt.Sprintf("%v", v[fieldLocation]))
 				default:
 					// TODO:
 				}
@@ -93,9 +93,10 @@ func (input Input) flatten(typ Type, binding *Binding) []string {
 	default:
 		if input.RequiredType != nil {
 			flattened = append(flattened, input.flattenWithRequiredType()...)
-		} else {
-			// TODO
 		}
+		//else {
+		// TODO
+		//}
 	}
 	return flattened
 }
@@ -136,7 +137,7 @@ func (input Input) flattenWithRequiredType() []string {
 										case map[interface{}]interface{}:
 											for _, types := range input.Requirements[0].SchemaDefRequirement.Types {
 												val3array := []string{}
-												var val3count int = 0
+												var val3count int
 												sort.Sort(types.Fields)
 												for _, fields := range types.Fields {
 													for key3, val3 := range v3 {
@@ -152,7 +153,7 @@ func (input Input) flattenWithRequiredType() []string {
 																				val3count = val3count + 1
 																			}
 																		}
-																	case "int":
+																	case typeInt:
 																		if fields.Binding.Prefix != "" {
 																			val3array = append(val3array, fields.Binding.Prefix, fmt.Sprintf("%v", val3))
 																			val3count = val3count + 1
@@ -189,9 +190,8 @@ func (input Input) Flatten() []string {
 		// In case "input.Default == nil" should be validated by usage layer.
 		if input.Default != nil {
 			return input.Default.Flatten(input.Binding)
-		} else {
-			return []string{}
 		}
+		return []string{}
 	}
 	flattened := []string{}
 	if repr := input.Types[0]; len(input.Types) == 1 {
@@ -222,7 +222,7 @@ func (input Input) Flatten() []string {
 type Inputs []Input
 
 // New constructs new "Inputs" struct.
-func (_ Inputs) New(i interface{}) Inputs {
+func (ins Inputs) New(i interface{}) Inputs {
 	dest := Inputs{}
 	switch x := i.(type) {
 	case []interface{}:

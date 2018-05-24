@@ -9,7 +9,7 @@ type EnvDef struct {
 }
 
 // NewList constructs a list of EnvDef from interface
-func (_ EnvDef) NewList(i interface{}) []EnvDef {
+func (e EnvDef) NewList(i interface{}) []EnvDef {
 	dest := []EnvDef{}
 	switch x := i.(type) {
 	case map[string]interface{}:

@@ -3,8 +3,8 @@ package cwlgotest
 import (
 	"testing"
 
-	cwl "github.com/sb10/cwl.go"
 	. "github.com/otiai10/mint"
+	cwl "github.com/sb10/cwl.go"
 )
 
 func TestCWL_basename_fields_test_test(t *testing.T) {

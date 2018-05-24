@@ -27,21 +27,21 @@ func (binding Binding) New(i interface{}) *Binding {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "position":
+			case fieldPosition:
 				dest.Position = int(v.(float64))
-			case "prefix":
+			case fieldPrefix:
 				dest.Prefix = v.(string)
-			case "itemSeparator":
+			case fieldItemSeparator:
 				dest.Separator = v.(string)
-			case "loadContents":
+			case fieldLoadContents:
 				dest.LoadContents = v.(bool)
-			case "glob":
+			case fieldGlob:
 				dest.Glob = StringArrayable(v)
-			case "shellQuote":
+			case fieldShellQuote:
 				dest.ShellQuote = v.(bool)
-			case "valueFrom":
+			case fieldValueFrom:
 				dest.ValueFrom = &Alias{v.(string)}
-			case "outputEval":
+			case fieldOutputEval:
 				dest.Eval = v.(string)
 			}
 		}

@@ -4,7 +4,7 @@ package cwl
 type Hints []Hint
 
 // New constructs "Hints" struct.
-func (_ Hints) New(i interface{}) Hints {
+func (h Hints) New(i interface{}) Hints {
 	dest := []Hint{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -39,21 +39,21 @@ type Hint struct {
 }
 
 // New constructs Hint from interface.
-func (_ Hint) New(i interface{}) Hint {
+func (h Hint) New(i interface{}) Hint {
 	dest := Hint{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, val := range x {
 			switch key {
-			case "class":
+			case fieldClass:
 				dest.Class = val.(string)
-			case "dockerPull":
+			case fieldDockerPull:
 				dest.DockerPull = val.(string)
-			case "coresMin":
+			case fieldCoresMin:
 				dest.CoresMin = int(val.(float64))
 			case "fakeField":
 				dest.FakeField = val.(string)
-			case "envDef":
+			case fieldEnvDef:
 				dest.Envs = EnvDef{}.NewList(val)
 			case "$import":
 				dest.Import = val.(string)

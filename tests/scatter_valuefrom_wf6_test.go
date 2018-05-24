@@ -4,8 +4,8 @@ import (
 	"sort"
 	"testing"
 
-	cwl "github.com/sb10/cwl.go"
 	. "github.com/otiai10/mint"
+	cwl "github.com/sb10/cwl.go"
 )
 
 func TestDecode_scatter_valuefrom_wf6(t *testing.T) {

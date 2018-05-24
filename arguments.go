@@ -8,7 +8,7 @@ type Argument struct {
 }
 
 // New constructs an "Argument" struct from any interface.
-func (_ Argument) New(i interface{}) Argument {
+func (arg Argument) New(i interface{}) Argument {
 	dest := Argument{}
 	switch x := i.(type) {
 	case string:
@@ -37,7 +37,7 @@ func (arg Argument) Flatten() []string {
 type Arguments []Argument
 
 // New constructs "Arguments" struct.
-func (_ Arguments) New(i interface{}) Arguments {
+func (args Arguments) New(i interface{}) Arguments {
 	dest := Arguments{}
 	switch x := i.(type) {
 	case []interface{}:

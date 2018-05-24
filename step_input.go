@@ -11,7 +11,7 @@ type StepInput struct {
 }
 
 // New constructs a StepInput struct from any interface.
-func (_ StepInput) New(i interface{}) StepInput {
+func (s StepInput) New(i interface{}) StepInput {
 	dest := StepInput{}
 	switch x := i.(type) {
 	case map[string]interface{}:
@@ -20,7 +20,7 @@ func (_ StepInput) New(i interface{}) StepInput {
 				dest.ID = key
 			}
 
-			if key == "id" {
+			if key == fieldID {
 				dest.ID = v.(string)
 			} else {
 				switch e := v.(type) {
@@ -33,9 +33,9 @@ func (_ StepInput) New(i interface{}) StepInput {
 				case map[string]interface{}:
 					for key, v := range e {
 						switch key {
-						case "id":
+						case fieldID:
 							dest.ID = v.(string)
-						case "source":
+						case fieldSource:
 							if list, ok := v.([]interface{}); ok {
 								for _, s := range list {
 									dest.Source = append(dest.Source, s.(string))
@@ -43,11 +43,11 @@ func (_ StepInput) New(i interface{}) StepInput {
 							} else {
 								dest.Source = append(dest.Source, v.(string))
 							}
-						case "linkMerge":
+						case fieldLinkMerge:
 							dest.LinkMerge = v.(string)
-						case "default":
+						case fieldDefault:
 							dest.Default = InputDefault{}.New(v)
-						case "valueFrom":
+						case fieldValueFrom:
 							dest.ValueFrom = v.(string)
 						}
 					}
@@ -62,7 +62,7 @@ func (_ StepInput) New(i interface{}) StepInput {
 type StepInputs []StepInput
 
 // NewList constructs a list of StepInput from interface.
-func (_ StepInput) NewList(i interface{}) StepInputs {
+func (s StepInput) NewList(i interface{}) StepInputs {
 	dest := StepInputs{}
 	switch x := i.(type) {
 	case []interface{}:

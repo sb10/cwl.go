@@ -50,17 +50,17 @@ type Root struct {
 func (root *Root) UnmarshalMap(docs map[string]interface{}) error {
 	for key, val := range docs {
 		switch key {
-		case "cwlVersion":
+		case fieldCWLVersion:
 			root.Version = val.(string)
-		case "class":
+		case fieldClass:
 			root.Class = val.(string)
-		case "hints":
+		case fieldHints:
 			root.Hints = root.Hints.New(val)
-		case "doc":
+		case fieldDoc:
 			root.Doc = val.(string)
-		case "baseCommand":
+		case fieldBaseCommand:
 			root.BaseCommands = root.BaseCommands.New(val)
-		case "arguments":
+		case fieldArguments:
 			root.Arguments = root.Arguments.New(val)
 		case "$namespaces":
 			root.Namespaces = root.Namespaces.New(val)
@@ -68,23 +68,23 @@ func (root *Root) UnmarshalMap(docs map[string]interface{}) error {
 			root.Schemas = root.Schemas.New(val)
 		case "$graph":
 			root.Graphs = root.Graphs.New(val)
-		case "stdin":
+		case fieldStdIn:
 			root.Stdin = val.(string)
-		case "stdout":
+		case fieldStdOut:
 			root.Stdout = val.(string)
-		case "stderr":
+		case fieldStdErr:
 			root.Stderr = val.(string)
-		case "inputs":
+		case fieldInputs:
 			root.Inputs = root.Inputs.New(val)
-		case "outputs":
+		case fieldOutputs:
 			root.Outputs = root.Outputs.New(val)
-		case "requirements":
+		case fieldRequirements:
 			root.Requirements = root.Requirements.New(val)
-		case "steps":
+		case fieldSteps:
 			root.Steps = root.Steps.New(val)
-		case "id":
+		case fieldID:
 			root.ID = val.(string)
-		case "expression":
+		case fieldExpression:
 			root.Expression = val.(string)
 		}
 	}

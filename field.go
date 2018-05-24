@@ -11,19 +11,19 @@ type Field struct {
 }
 
 // New constructs a Field struct from any interface.
-func (_ Field) New(i interface{}) Field {
+func (f Field) New(i interface{}) Field {
 	dest := Field{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "name":
+			case fieldName:
 				dest.Name = v.(string)
-			case "type":
+			case fieldType:
 				dest.Types = Type{}.NewList(v)
-			case "inputBinding":
+			case fieldInputBinding:
 				dest.Binding = Binding{}.New(v)
-			case "outputBinding":
+			case fieldOutputBinding:
 				dest.Binding = Binding{}.New(v)
 			}
 		}
@@ -31,11 +31,11 @@ func (_ Field) New(i interface{}) Field {
 	return dest
 }
 
-// Inputs represents "inputs" field in CWL.
+// Fields represents "fields" field in CWL.
 type Fields []Field
 
-// New constructs new "Inputs" struct.
-func (_ Fields) New(i interface{}) Fields {
+// New constructs new "Fields" struct.
+func (ins Fields) New(i interface{}) Fields {
 	dest := Fields{}
 	switch x := i.(type) {
 	case []interface{}:

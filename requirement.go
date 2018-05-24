@@ -15,25 +15,25 @@ type Requirement struct {
 }
 
 // New constructs "Requirement" struct from interface.
-func (_ Requirement) New(i interface{}) Requirement {
+func (r Requirement) New(i interface{}) Requirement {
 	dest := Requirement{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
 			switch key {
-			case "class":
+			case fieldClass:
 				dest.Class = v.(string)
-			case "dockerPull":
+			case fieldDockerPull:
 				dest.DockerPull = v.(string)
-			case "dockerOutputDirectory":
+			case fieldDockerOutputDirectory:
 				dest.DockerOutputDirectory = v.(string)
-			case "types":
+			case fieldTypes:
 				dest.Types = Type{}.NewList(v)
-			case "expressionLib":
+			case fieldExpressionLib:
 				dest.ExpressionLib = JavascriptExpression{}.NewList(v)
-			case "envDef":
+			case fieldEnvDef:
 				dest.EnvDef = EnvDef{}.NewList(v)
-			case "listing":
+			case fieldListing:
 				dest.Listing = Entry{}.NewList(v)
 			case "$import":
 				dest.Import = v.(string)
@@ -47,7 +47,7 @@ func (_ Requirement) New(i interface{}) Requirement {
 type Requirements []Requirement
 
 // New constructs "Requirements" struct from interface.
-func (_ Requirements) New(i interface{}) Requirements {
+func (r Requirements) New(i interface{}) Requirements {
 	dest := Requirements{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -64,7 +64,7 @@ func (_ Requirements) New(i interface{}) Requirements {
 	return dest
 }
 
-// InlineJavascriptRequirement is supposed to be embeded to Requirement.
+// InlineJavascriptRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#InlineJavascriptRequirement
 type InlineJavascriptRequirement struct {
 	ExpressionLib []JavascriptExpression
@@ -76,7 +76,8 @@ type JavascriptExpression struct {
 	Value string
 }
 
-func (_ JavascriptExpression) NewList(i interface{}) []JavascriptExpression {
+// NewList constructs slice of JavascriptExpression from interface.
+func (j JavascriptExpression) NewList(i interface{}) []JavascriptExpression {
 	dest := []JavascriptExpression{}
 	switch x := i.(type) {
 	case []interface{}:
@@ -87,7 +88,8 @@ func (_ JavascriptExpression) NewList(i interface{}) []JavascriptExpression {
 	return dest
 }
 
-func (_ JavascriptExpression) New(i interface{}) JavascriptExpression {
+// New constructs JavascriptExpression from interface.
+func (j JavascriptExpression) New(i interface{}) JavascriptExpression {
 	dest := JavascriptExpression{}
 	switch x := i.(type) {
 	case string:
@@ -105,13 +107,13 @@ func (_ JavascriptExpression) New(i interface{}) JavascriptExpression {
 	return dest
 }
 
-// SchemaDefRequirement is supposed to be embeded to Requirement.
+// SchemaDefRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#SchemaDefRequirement
 type SchemaDefRequirement struct {
 	Types []Type
 }
 
-// DockerRequirement is supposed to be embeded to Requirement.
+// DockerRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#DockerRequirement
 type DockerRequirement struct {
 	DockerPull            string
@@ -122,7 +124,7 @@ type DockerRequirement struct {
 	DockerOutputDirectory string
 }
 
-// SoftwareRequirement is supposed to be embeded to Requirement.
+// SoftwareRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#SoftwareRequirement
 type SoftwareRequirement struct {
 	Packages []SoftwarePackage
@@ -135,24 +137,24 @@ type SoftwarePackage struct {
 	Specs    []string
 }
 
-// InitialWorkDirRequirement is supposed to be embeded to Requirement.
+// InitialWorkDirRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement
 type InitialWorkDirRequirement struct {
 	Listing []Entry
 }
 
-// EnvVarRequirement  is supposed to be embeded to Requirement.
+// EnvVarRequirement  is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#EnvVarRequirement
 type EnvVarRequirement struct {
 	EnvDef []EnvDef
 }
 
-// ShellCommandRequirement is supposed to be embeded to Requirement.
+// ShellCommandRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#ShellCommandRequirement
 type ShellCommandRequirement struct {
 }
 
-// ResourceRequirement is supposed to be embeded to Requirement.
+// ResourceRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#ResourceRequirement
 type ResourceRequirement struct {
 	CoresMin int
