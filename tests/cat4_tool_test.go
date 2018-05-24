@@ -3,7 +3,7 @@ package cwlgotest
 import (
 	"testing"
 
-	cwl "github.com/otiai10/cwl.go"
+	cwl "github.com/sb10/cwl.go"
 	. "github.com/otiai10/mint"
 )
 

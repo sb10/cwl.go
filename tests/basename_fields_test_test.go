@@ -4,8 +4,8 @@ import (
 	"sort"
 	"testing"
 
-	cwl "github.com/otiai10/cwl.go"
 	. "github.com/otiai10/mint"
+	cwl "github.com/sb10/cwl.go"
 )
 
 func TestDecode_basename_fields_test(t *testing.T) {

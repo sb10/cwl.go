@@ -1,10 +1,12 @@
 # cwl.go
 
-[![Build Status](https://travis-ci.org/otiai10/cwl.go.svg?branch=master)](https://travis-ci.org/otiai10/cwl.go) [![GoDoc](https://godoc.org/github.com/otiai10/cwl.go?status.svg)](https://godoc.org/github.com/otiai10/cwl.go)
+[![Build Status](https://travis-ci.org/sb10/cwl.go.svg?branch=develop)](https://travis-ci.org/sb10/cwl.go) [![GoDoc](https://godoc.org/github.com/sb10/cwl.go?status.svg)](https://godoc.org/github.com/sb10/cwl.go)
 
 `cwl.go` is just a parser of CWL file and input files based on [CWL](https://github.com/common-workflow-language/common-workflow-language), for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
 
-Fully documented [here!](https://godoc.org/github.com/otiai10/cwl.go)
+This is a fork of github.com/otiai10/cwl.go that, amongst other things, adds a
+"Resolve" method to turn CWL+params in to concrete command lines to run, with
+dependency information.
 
 # Example
 
@@ -15,14 +17,17 @@ import (
 	"fmt"
 	"os"
 
-	cwl "github.com/otiai10/cwl.go"
+	cwl "github.com/sb10/cwl.go"
 )
 
 func main() {
-	file, _ := os.Open("hello.cwl")
+	cwlFile, _ := os.Open("hello.cwl")
 	doc := cwl.NewCWL()
-	doc.Decode(file)
-	fmt.Printf("%+v\n", doc)
+	doc.Decode(cwlFile)
+
+	paramsFile, _ := os.Open("params.yaml")
+	cmds, _ := doc.Resolve(paramsFile)
+	fmt.Printf("cmds:\n%s\n", cmds)
 }
 ```
 
@@ -30,7 +35,7 @@ func main() {
 
 ## Prerequisite
 
-`xtest.sh` requires Go package `github.com/otiai10/mint` 
+`xtest.sh` requires Go package `github.com/otiai10/mint`
 
 To install it.
 
@@ -40,7 +45,7 @@ go get -u github.com/otiai10/mint
 
 ## Why xtest.sh and How to do test with it.
 
-Because there are both array and dictionary in CWL specification, and as you know Golang can't keep order of map keys, the test fails sometimes by order problem. Therefore, [`./xtest.sh`](https://github.com/otiai10/cwl.go/blob/master/xtest.sh) tries testing each case several times eagerly unless it passes.
+Because there are both array and dictionary in CWL specification, and as you know Golang can't keep order of map keys, the test fails sometimes by order problem. Therefore, [`./xtest.sh`](https://github.com/sb10/cwl.go/blob/master/xtest.sh) tries testing each case several times eagerly unless it passes.
 
 For all cases,
 
