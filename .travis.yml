@@ -1,6 +1,6 @@
 language: go
 go:
-  - 1.10
+  - "1.10.2"
 before_install:
   - go get github.com/modocache/gover
   - go get github.com/mattn/goveralls
