@@ -2,10 +2,11 @@ language: go
 go:
   - "1.10.2"
 before_install:
+  - go get github.com/stretchr/testify/assert
   - go get github.com/modocache/gover
   - go get github.com/mattn/goveralls
 before_script:
-  - go get ./...
+  - go get -t ./...
 script:
   - go test -coverprofile=resolver.coverprofile -covermode count
   - ./xtest.sh
