@@ -1,8 +1,13 @@
 language: go
 go:
   - 1.10
+before_install:
+  - go get github.com/modocache/gover
+  - go get github.com/mattn/goveralls
 before_script:
   - go get ./...
 script:
-  - go test
+  - go test -coverprofile=resolver.coverprofile -covermode count
   - ./xtest.sh
+  - $HOME/gopath/bin/gover
+  - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service travis-ci

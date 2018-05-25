@@ -1,6 +1,10 @@
 # cwl.go
 
-[![Build Status](https://travis-ci.org/sb10/cwl.go.svg?branch=develop)](https://travis-ci.org/sb10/cwl.go) [![GoDoc](https://godoc.org/github.com/sb10/cwl.go?status.svg)](https://godoc.org/github.com/sb10/cwl.go)
+[![GoDoc](https://godoc.org/github.com/sb10/cwl.go?status.svg)](https://godoc.org/github.com/sb10/cwl.go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sb10/cwl.go)](https://goreportcard.com/report/github.com/sb10/cwl.go)
+develop branch:
+[![Build Status](https://travis-ci.org/sb10/cwl.go?branch=develop)](https://travis-ci.org/sb10/cwl.go)
+[![Coverage Status](https://coveralls.io/repos/github/sb10/cwl.go/badge.svg?branch=develop)](https://coveralls.io/github/sb10/cwl.go?branch=develop)
 
 `cwl.go` is just a parser of CWL file and input files based on [CWL](https://github.com/common-workflow-language/common-workflow-language), for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
 
