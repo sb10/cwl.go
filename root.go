@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 
 	"github.com/otiai10/yaml2json"
 )
@@ -134,4 +135,29 @@ func (root *Root) AsStep(i interface{}) *Root {
 		}
 	}
 	return dest
+}
+
+// Resolve decodes the given CWL file, as well as the optional parameters file,
+// to produce the concrete set of commands that must be run for this workflow.
+func Resolve(cwlR io.Reader, paramsR *os.File) (Commands, error) {
+	root := NewCWL()
+	err := root.Decode(cwlR)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := NewResolver(root)
+	if err != nil {
+		return nil, err
+	}
+
+	params := NewParameters()
+	if paramsR != nil {
+		err = params.Decode(paramsR)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return r.Resolve(*params)
 }

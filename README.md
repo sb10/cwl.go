@@ -22,12 +22,16 @@ import (
 
 func main() {
 	cwlFile, _ := os.Open("hello.cwl")
+	paramsFile, _ := os.Open("params.yaml")
+
+	// basic parsing
 	doc := cwl.NewCWL()
 	doc.Decode(cwlFile)
+	fmt.Printf("%+v\n", doc)
 
-	paramsFile, _ := os.Open("params.yaml")
-	cmds, _ := doc.Resolve(paramsFile)
-	fmt.Printf("cmds:\n%s\n", cmds)
+	// or get concrete command lines to run
+	cmds, _ := cwl.Resolve(cwlFile, paramsFile)
+	fmt.Printf("%s\n", cmds)
 }
 ```
 
