@@ -6,7 +6,7 @@ develop branch:
 [![Build Status](https://travis-ci.org/sb10/cwl.go.svg?branch=develop)](https://travis-ci.org/sb10/cwl.go)
 [![Coverage Status](https://coveralls.io/repos/github/sb10/cwl.go/badge.svg?branch=develop)](https://coveralls.io/github/sb10/cwl.go?branch=develop)
 
-`cwl.go` is a parser of [CWL](https://github.com/common-workflow-language/common-workflow-language) files and their inputs, for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
+`cwl.go` is a parser of [CWL](https://github.com/common-workflow-language/common-workflow-language) files and their input parameters, for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
 
 This is a fork of github.com/otiai10/cwl.go that, amongst other things, adds a
 "Resolve" method to turn CWL+params in to concrete command lines to run, with
