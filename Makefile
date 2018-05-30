@@ -2,8 +2,7 @@ default: test
 
 # go get -u github.com/otiai10/mint
 test:
-	@go test
-	@./xtest.sh
+	@go test --count 1
 
 # go get -u gopkg.in/alecthomas/gometalinter.v2
 # gometalinter.v2 --install

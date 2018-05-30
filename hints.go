@@ -16,7 +16,8 @@ func (h Hints) New(i interface{}) Hints {
 			}
 		}
 	case map[string]interface{}:
-		for key, val := range x {
+		for _, key := range sortKeys(x) {
+			val := x[key]
 			switch e := val.(type) {
 			case map[string]interface{}:
 				hint := Hint{}.New(e)

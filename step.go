@@ -13,8 +13,8 @@ func (steps Steps) New(i interface{}) Steps {
 			dest = append(dest, s)
 		}
 	case map[string]interface{}:
-		for key, v := range x {
-			s := Step{}.New(v)
+		for _, key := range sortKeys(x) {
+			s := Step{}.New(x[key])
 			s.ID = key
 			dest = append(dest, s)
 		}
@@ -70,19 +70,4 @@ func (s Step) New(i interface{}) Step {
 		}
 	}
 	return dest
-}
-
-// Len for sorting
-func (steps Steps) Len() int {
-	return len(steps)
-}
-
-// Less for sorting
-func (steps Steps) Less(i, j int) bool {
-	return steps[i].ID < steps[j].ID
-}
-
-// Swap for sorting
-func (steps Steps) Swap(i, j int) {
-	steps[i], steps[j] = steps[j], steps[i]
 }

@@ -70,28 +70,13 @@ func (s StepInput) NewList(i interface{}) StepInputs {
 			dest = append(dest, StepInput{}.New(v))
 		}
 	case map[string]interface{}:
-		for key, v := range x {
+		for _, key := range sortKeys(x) {
 			item := make(map[string]interface{})
-			item[key] = v
+			item[key] = x[key]
 			dest = append(dest, StepInput{}.New(item))
 		}
 	default:
 		dest = append(dest, StepInput{}.New(x))
 	}
 	return dest
-}
-
-// Len for sorting
-func (s StepInputs) Len() int {
-	return len(s)
-}
-
-// Less for sorting
-func (s StepInputs) Less(i, j int) bool {
-	return s[i].ID < s[j].ID
-}
-
-// Swap for sorting
-func (s StepInputs) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
 }

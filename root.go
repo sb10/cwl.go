@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"sort"
 
 	"github.com/otiai10/yaml2json"
 )
@@ -120,6 +121,34 @@ func (root *Root) Decode(r io.Reader) (err error) {
 		return err
 	}
 	return nil
+}
+
+// Sort on a Decode()d Root sorts the various properties for consistent ordering
+// of elements. This isn't necessary under normal circumstances, but may be
+// useful for comparing (parts of) CWL files. Where possible, the original order
+// of elements specified in the CWL file is kept; this sort only has an effect
+// on parts of the CWL file that could have been specified with an array or a
+// map and were specified with maps, in which case we sort by key when we return
+// an array.
+func (root *Root) Sort() {
+	if root.Arguments != nil {
+		sort.Sort(root.Arguments)
+	}
+	if root.Steps != nil {
+		for _, s := range root.Steps {
+			if &s.Run != nil && s.Run.Workflow != nil {
+				s.Run.Workflow.Sort()
+			}
+		}
+	}
+	if root.Inputs != nil {
+		sort.Sort(root.Inputs)
+	}
+	if root.Graphs != nil {
+		for _, g := range root.Graphs {
+			g.Sort()
+		}
+	}
 }
 
 // AsStep constructs Root as a step of "steps" from interface.

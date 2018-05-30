@@ -56,36 +56,11 @@ func (o Outputs) New(i interface{}) Outputs {
 			dest = append(dest, Output{}.New(v))
 		}
 	case map[string]interface{}:
-		for key, v := range x {
-			output := Output{}.New(v)
+		for _, key := range sortKeys(x) {
+			output := Output{}.New(x[key])
 			output.ID = key
 			dest = append(dest, output)
 		}
 	}
 	return dest
-}
-
-// Len for sorting
-func (o Outputs) Len() int {
-	return len(o)
-}
-
-// Less for sorting
-func (o Outputs) Less(i, j int) bool {
-	prev, next := o[i].Binding, o[j].Binding
-	switch [2]bool{prev == nil, next == nil} {
-	case [2]bool{true, true}:
-		return false
-	case [2]bool{false, true}:
-		return prev.Position < 0
-	case [2]bool{true, false}:
-		return next.Position > 0
-	default:
-		return prev.Position <= next.Position
-	}
-}
-
-// Swap for sorting
-func (o Outputs) Swap(i, j int) {
-	o[i], o[j] = o[j], o[i]
 }

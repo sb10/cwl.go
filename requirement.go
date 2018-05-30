@@ -55,8 +55,8 @@ func (r Requirements) New(i interface{}) Requirements {
 			dest = append(dest, Requirement{}.New(r))
 		}
 	case map[string]interface{}:
-		for key, v := range x {
-			r := Requirement{}.New(v)
+		for _, key := range sortKeys(x) {
+			r := Requirement{}.New(x[key])
 			r.Class = key
 			dest = append(dest, r)
 		}

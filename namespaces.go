@@ -12,9 +12,9 @@ func (n Namespaces) New(i interface{}) Namespaces {
 			dest = append(dest, Namespace{}.New(v))
 		}
 	case map[string]interface{}:
-		for key, v := range x {
+		for _, key := range sortKeys(x) {
 			tmp := map[string]interface{}{}
-			tmp[key] = v
+			tmp[key] = x[key]
 			dest = append(dest, Namespace{}.New(tmp))
 		}
 	default:

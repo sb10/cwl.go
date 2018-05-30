@@ -6,11 +6,11 @@ develop branch:
 [![Build Status](https://travis-ci.org/sb10/cwl.go?branch=develop)](https://travis-ci.org/sb10/cwl.go)
 [![Coverage Status](https://coveralls.io/repos/github/sb10/cwl.go/badge.svg?branch=develop)](https://coveralls.io/github/sb10/cwl.go?branch=develop)
 
-`cwl.go` is just a parser of CWL file and input files based on [CWL](https://github.com/common-workflow-language/common-workflow-language), for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
+`cwl.go` is a parser of CWL file and input files based on [CWL](https://github.com/common-workflow-language/common-workflow-language), for example [1st-tool.yaml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/1st-tool.cwl) and [echo-job.yml](https://github.com/common-workflow-language/common-workflow-language/blob/master/v1.0/examples/echo-job.yml).
 
 This is a fork of github.com/otiai10/cwl.go that, amongst other things, adds a
 "Resolve" method to turn CWL+params in to concrete command lines to run, with
-dependency information.
+dependency and resource usage information.
 
 # Example
 
@@ -41,34 +41,15 @@ func main() {
 
 # Tests
 
-## Prerequisite
-
-`xtest.sh` requires Go package `github.com/otiai10/mint`
-
-To install it.
-
-```
-go get -u github.com/otiai10/mint
-```
-
-## Why xtest.sh and How to do test with it.
-
-Because there are both array and dictionary in CWL specification, and as you know Golang can't keep order of map keys, the test fails sometimes by order problem. Therefore, [`./xtest.sh`](https://github.com/sb10/cwl.go/blob/master/xtest.sh) tries testing each case several times eagerly unless it passes.
-
-For all cases,
+Decode() tests run against the test cwl files in the cwl subdirectory for the
+latest release version of the CWL spec. To run all tests, just:
 
 ```sh
-./xtest.sh
+go test
 ```
 
-For only 1 case which matches `_wf3`,
+To run tests against a single file:
 
 ```sh
-./xtest.sh _wf3
-```
-
-Or if you want to execute single test for just 1 time (NOT eagerly),
-
-```sh
-go test ./tests -run _wf3
+go test -cwl scatter-valuefrom-wf3.cwl
 ```

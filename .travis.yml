@@ -9,6 +9,5 @@ before_script:
   - go get -t ./...
 script:
   - go test -coverprofile=resolver.coverprofile -covermode count
-  - ./xtest.sh
   - $HOME/gopath/bin/gover
   - $HOME/gopath/bin/goveralls -coverprofile=gover.coverprofile -service travis-ci

@@ -60,13 +60,16 @@ func (args Arguments) Less(i, j int) bool {
 	prev, next := args[i].Binding, args[j].Binding
 	switch [2]bool{prev == nil, next == nil} {
 	case [2]bool{true, true}:
-		return false
+		return i < j
 	case [2]bool{false, true}:
 		return prev.Position < 0
 	case [2]bool{true, false}:
 		return next.Position > 0
 	default:
-		return prev.Position <= next.Position
+		if prev.Position == next.Position {
+			return i < j
+		}
+		return prev.Position < next.Position
 	}
 }
 

@@ -7,7 +7,7 @@ type SecondaryFile struct {
 
 // NewList constructs list of "SecondaryFile".
 func (s SecondaryFile) NewList(i interface{}) []SecondaryFile {
-	dest := []SecondaryFile{}
+	var dest []SecondaryFile
 	switch x := i.(type) {
 	case []interface{}:
 		for _, v := range x {

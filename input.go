@@ -230,8 +230,8 @@ func (ins Inputs) New(i interface{}) Inputs {
 			dest = append(dest, Input{}.New(v))
 		}
 	case map[string]interface{}:
-		for key, v := range x {
-			input := Input{}.New(v)
+		for _, key := range sortKeys(x) {
+			input := Input{}.New(x[key])
 			input.ID = key
 			dest = append(dest, input)
 		}
@@ -249,13 +249,16 @@ func (ins Inputs) Less(i, j int) bool {
 	prev, next := ins[i].Binding, ins[j].Binding
 	switch [2]bool{prev == nil, next == nil} {
 	case [2]bool{true, true}:
-		return true
+		return i < j
 	case [2]bool{false, true}:
 		return prev.Position < 0
 	case [2]bool{true, false}:
 		return next.Position > 0
 	default:
-		return prev.Position <= next.Position
+		if prev.Position == next.Position {
+			return i < j
+		}
+		return prev.Position < next.Position
 	}
 }
 
