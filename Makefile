@@ -1,6 +1,6 @@
 default: test
 
-# go get -u github.com/otiai10/mint
+# go get -u github.com/stretchr/testify/assert
 test:
 	@go test --count 1
 
