@@ -24,7 +24,12 @@
 package cwl
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -39,8 +44,18 @@ type Command struct {
 	// Cmd is the executable to run along with any command line arguments.
 	Cmd []string
 
-	// Cwd is the directory you should run the Cmd in.
+	// Cwd is the directory you should execute the Cmd in. $HOME should be set
+	// to this while executing.
 	Cwd string
+
+	// TmpPrefix is the parent of a unique directory that should be created
+	// before Cmd is executed. That unique dir should be set as $TMPDIR, and be
+	// deleted afterwards.
+	TmpPrefix string
+
+	// Env are the environment variables the Cmd must be executed with. The
+	// value is in the same format as that of os.Environ().
+	Env []string
 
 	// StdInPath, if non-blank, is the path to a file that should be piped in to
 	// Cmd when executed.
@@ -53,11 +68,69 @@ type Command struct {
 	// StdErrPath, if non-blank, is the path to a file that the STDERR of the
 	// executed Cmd should be redirected to.
 	StdErrPath string
+
+	// Outputs is the resolved outputs specified in the CWL for this command.
+	Outputs interface{}
 }
 
 // String allows for pretty-printing of a Command.
 func (c Command) String() string {
-	return fmt.Sprintf("{\n Step: %s\n Cmd: %s\n Cwd: %s\n StdIn: %s\n StdOut: %s\n StdErr: %s\n}", c.ID, c.Cmd, c.Cwd, c.StdInPath, c.StdOutPath, c.StdErrPath)
+	return fmt.Sprintf("{\n Step: %s\n Cmd: %s\n Cwd: %s\n TmpPrefix: %s\n Env: %s\n StdIn: %s\n StdOut: %s\n StdErr: %s\n}", c.ID, c.Cmd, c.Cwd, c.TmpPrefix, c.Env, c.StdInPath, c.StdOutPath, c.StdErrPath)
+}
+
+// Execute runs the Command's Cmd in the right Cwd, with $HOME and $TMPDIR set
+// as per Cwd and TmpPrefix, and with the environment variables from Env. The
+// unique tmp dir is deleted afterwards. STDIN, OUT and ERR are also handled.
+// The return value is the decoded JSON of the file "cwl.output.json" created by
+// Cmd in Cwd, if any. Otherwise it is the Outputs value.
+func (c *Command) Execute() (interface{}, error) {
+	//fmt.Printf("cmd: %+v\n", c.Cmd)
+
+	if _, err := os.Stat(c.TmpPrefix); err != nil && os.IsNotExist(err) {
+		err = os.MkdirAll(c.TmpPrefix, 0700)
+		if err != nil {
+			return nil, err
+		}
+	}
+	tmpDir, err := ioutil.TempDir(c.TmpPrefix, "cwlgo.tmp")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if _, err := os.Stat(c.Cwd); err != nil && os.IsNotExist(err) {
+		err = os.MkdirAll(c.Cwd, 0700)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var cmdArgs []string
+	if len(c.Cmd) > 1 {
+		cmdArgs = c.Cmd[1:]
+	}
+	cmd := exec.Command(c.Cmd[0], cmdArgs...) // #nosec
+	cmd.Dir = c.Cwd
+	cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
+
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("output: %s\n", string(b))
+		return nil, err
+	}
+
+	if jsonFile, err := os.Open(filepath.Join(c.Cwd, "cwl.output.json")); err == nil {
+		defer jsonFile.Close()
+		b, err := ioutil.ReadAll(jsonFile)
+		if err != nil {
+			return nil, err
+		}
+
+		var out map[string]interface{}
+		err = json.Unmarshal(b, &out)
+		return out, err
+	}
+
+	return c.Outputs, nil
 }
 
 // Commands is a slice of Command.

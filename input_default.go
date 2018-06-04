@@ -2,6 +2,7 @@ package cwl
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 )
 
@@ -17,15 +18,31 @@ func (d InputDefault) New(i interface{}) *InputDefault {
 	return dest
 }
 
-// Flatten ...
-func (d *InputDefault) Flatten(binding *Binding) []string {
-	flattened := []string{}
+// Flatten returns the flattened inputs in a []string, with any of those which
+// were files with relative paths being made absolute relative to the given
+// cwl directory. If cwlDir is a blank string, the path is not altered. The
+// optionalIFC allows you to define staging; if not supplied, defaults to
+// DefaultInputFileCallback.
+func (d *InputDefault) Flatten(binding *Binding, cwlDir string, optionalIFC ...InputFileCallback) []string {
+	var ifc InputFileCallback
+	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
+		ifc = optionalIFC[0]
+	} else {
+		ifc = DefaultInputFileCallback
+	}
+
+	var flattened []string
 	switch v := d.Self.(type) {
 	case map[string]interface{}:
 		// TODO: more strict type casting ;(
 		class, ok := v[fieldClass]
 		if ok && class == typeFile {
-			flattened = append(flattened, fmt.Sprintf("%v", v[fieldLocation]))
+			path := fmt.Sprintf("%v", v[fieldLocation])
+			if cwlDir != "" && !filepath.IsAbs(path) {
+				path = filepath.Join(cwlDir, path)
+			}
+			path = ifc(path)
+			flattened = append(flattened, path)
 		}
 	case string:
 		flattened = append(flattened, d.Self.(string))

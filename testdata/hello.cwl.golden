@@ -1,1 +1,1 @@
-[{"ID":"step0","Cmd":["echo","Hello World"],"Cwd":".","StdInPath":"","StdOutPath":"response.txt","StdErrPath":""}]
+[{"ID":"step0","Cmd":["echo","Hello World"],"Cwd":".","TmpPrefix":"/tmp","Env":null,"StdInPath":"","StdOutPath":"response.txt","StdErrPath":""}]

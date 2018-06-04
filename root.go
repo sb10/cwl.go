@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/otiai10/yaml2json"
@@ -18,7 +19,6 @@ func NewCWL() *Root {
 	root.BaseCommands = BaseCommands{}
 	root.Hints = Hints{}
 	root.Inputs = Inputs{}
-	// root.ProvidedInputs = ProvidedInputs{}
 	return root
 }
 
@@ -37,15 +37,11 @@ type Root struct {
 	Stdout       string
 	Stderr       string
 	Inputs       Inputs `json:"inputs"`
-	// ProvidedInputs ProvidedInputs `json:"-"`
 	Outputs      Outputs
 	Requirements Requirements
 	Steps        Steps
 	ID           string // ID only appears if this Root is a step in "steps"
 	Expression   string // appears only if Class is "ExpressionTool"
-
-	// Path
-	Path string `json:"-"`
 }
 
 // UnmarshalMap decode map[string]interface{} to *Root.
@@ -168,25 +164,50 @@ func (root *Root) AsStep(i interface{}) *Root {
 
 // Resolve decodes the given CWL file, as well as the optional parameters file,
 // to produce the concrete set of commands that must be run for this workflow.
-func Resolve(cwlR io.Reader, paramsR *os.File) (Commands, error) {
-	root := NewCWL()
-	err := root.Decode(cwlR)
+// (Note that unlike Decode(), we need paths to the files to be able to resolve
+// relative paths in the CWL and params file as relative to those files.)
+// paramsPath can be an empty string if no parameters file is required.
+func Resolve(cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCallback) (Commands, error) {
+	cwlPath, err := filepath.Abs(cwlPath)
 	if err != nil {
 		return nil, err
 	}
 
-	r, err := NewResolver(root)
+	cwlF, err := os.Open(cwlPath)
+	if err != nil {
+		return nil, err
+	}
+	defer cwlF.Close()
+
+	root := NewCWL()
+	err = root.Decode(cwlF)
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := NewResolver(root, config, filepath.Dir(cwlPath))
 	if err != nil {
 		return nil, err
 	}
 
 	params := NewParameters()
-	if paramsR != nil {
-		err = params.Decode(paramsR)
+	if paramsPath != "" {
+		paramsPath, err = filepath.Abs(paramsPath)
+		if err != nil {
+			return nil, err
+		}
+
+		paramsF, err := os.Open(paramsPath)
+		if err != nil {
+			return nil, err
+		}
+		defer paramsF.Close()
+
+		err = params.Decode(paramsF)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return r.Resolve(*params)
+	return r.Resolve(*params, filepath.Dir(paramsPath), ifc)
 }

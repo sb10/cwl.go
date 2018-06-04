@@ -56,23 +56,18 @@ func TestResolver(t *testing.T) {
 	// it produces the correct commands
 	for _, file := range files {
 		name := file.Name()
-		path := filepath.Join(testDataDir, name)
+		cwlPath := filepath.Join(testDataDir, name)
 
-		if !strings.HasSuffix(path, ".cwl") {
+		if !strings.HasSuffix(cwlPath, ".cwl") {
 			continue
 		}
 
-		cwlF := openFile(t, path)
-		defer cwlF.Close()
-
-		paramsPath := strings.Replace(path, ".cwl", ".yaml", 1)
-		var paramsF *os.File
-		if fileExists(paramsPath) {
-			paramsF = openFile(t, paramsPath)
-			defer paramsF.Close()
+		paramsPath := strings.Replace(cwlPath, ".cwl", ".yaml", 1)
+		if _, err := os.Stat(paramsPath); err != nil && os.IsNotExist(err) {
+			paramsPath = ""
 		}
 
-		actual, err := Resolve(cwlF, paramsF)
+		actual, err := Resolve(cwlPath, paramsPath, ResolveConfig{}, DefaultInputFileCallback)
 		if !assert.Nil(err, name+" failed to Resolve()") {
 			continue
 		}
@@ -86,7 +81,7 @@ func TestResolver(t *testing.T) {
 			}
 		}
 
-		goldenPath := path + ".golden"
+		goldenPath := cwlPath + ".golden"
 		if *update {
 			writeCommands(t, goldenPath, actual)
 		}
@@ -102,11 +97,6 @@ func openFile(t *testing.T, path string) *os.File {
 		t.Fatal(err)
 	}
 	return f
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func writeCommands(t *testing.T, path string, cmds Commands) {

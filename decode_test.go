@@ -40,12 +40,10 @@ const version = "v1.0"
 
 var cwlPath = flag.String("cwl", "", "run tests on only this cwl file")
 
-var testOfficialDir string
-
 type expectationTester func(assert *a.Assertions, root *Root)
 
 func TestDecode(t *testing.T) {
-	testOfficialDir = fmt.Sprintf("cwl/%[1]s/%[1]s/", version)
+	testOfficialDir := filepath.Join("cwl", version, version)
 	files, err := ioutil.ReadDir(testOfficialDir)
 	if err != nil {
 		t.Fatal(err)
@@ -276,16 +274,16 @@ func bwaMemToolTest(assert *a.Assertions, root *Root) {
 	assert.Equal("File", root.Inputs[0].Types[0].Type, lineNumber())
 	assert.Equal(-1, root.Inputs[0].Binding.Position, lineNumber())
 
-	assert.Equal("minimum_seed_length", root.Inputs[1].ID, lineNumber())
-	assert.Equal("int", root.Inputs[1].Types[0].Type, lineNumber())
+	assert.Equal("min_std_max_min", root.Inputs[1].ID, lineNumber())
+	assert.Equal("array", root.Inputs[1].Types[0].Type, lineNumber())
+	assert.Equal("int", root.Inputs[1].Types[0].Items[0].Type, lineNumber())
 	assert.Equal(1, root.Inputs[1].Binding.Position, lineNumber())
-	assert.Equal("-m", root.Inputs[1].Binding.Prefix, lineNumber())
+	assert.Equal(",", root.Inputs[1].Binding.Separator, lineNumber())
 
-	assert.Equal("min_std_max_min", root.Inputs[2].ID, lineNumber())
-	assert.Equal("array", root.Inputs[2].Types[0].Type, lineNumber())
-	assert.Equal("int", root.Inputs[2].Types[0].Items[0].Type, lineNumber())
+	assert.Equal("minimum_seed_length", root.Inputs[2].ID, lineNumber())
+	assert.Equal("int", root.Inputs[2].Types[0].Type, lineNumber())
 	assert.Equal(1, root.Inputs[2].Binding.Position, lineNumber())
-	assert.Equal(",", root.Inputs[2].Binding.Separator, lineNumber())
+	assert.Equal("-m", root.Inputs[2].Binding.Prefix, lineNumber())
 
 	assert.Equal("reference", root.Inputs[3].ID, lineNumber())
 	assert.Equal("File", root.Inputs[3].Types[0].Type, lineNumber())

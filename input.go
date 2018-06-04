@@ -2,6 +2,7 @@ package cwl
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -60,7 +61,7 @@ func (input Input) New(i interface{}) Input {
 }
 
 // flatten
-func (input Input) flatten(typ Type, binding *Binding) []string {
+func (input Input) flatten(typ Type, binding *Binding, paramsDir string, ifc InputFileCallback) []string {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
@@ -81,7 +82,12 @@ func (input Input) flatten(typ Type, binding *Binding) []string {
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					separated = append(separated, fmt.Sprintf("%v", v[fieldLocation]))
+					path := fmt.Sprintf("%v", v[fieldLocation])
+					if paramsDir != "" && !filepath.IsAbs(path) {
+						path = filepath.Join(paramsDir, path)
+					}
+					path = ifc(path)
+					separated = append(separated, path)
 				default:
 					// TODO:
 				}
@@ -184,27 +190,63 @@ func (input Input) flattenWithRequiredType() []string {
 	return flattened
 }
 
-// Flatten ...
-func (input Input) Flatten() []string {
+// InputFileCallback functions take a path to an input file (which may be an
+// absolute path on the local file system, or potentially an s3:// path), and
+// return a path to where a an executable should access that file from. This
+// allows you to stage the file if desired.
+type InputFileCallback func(path string) string
+
+// DefaultInputFileCallback is an InputFileCallback that simply returns the
+// path unaltered, for when you don't wish to do any staging, allowing direct
+// access to input files at their original paths.
+var DefaultInputFileCallback = func(path string) string {
+	return path
+}
+
+// Flatten returns the flattened inputs in a []string, with any of those which
+// were files having their paths made absolute relative to the given paramsDir
+// (for files specified in the params file) or cwlDir (for files coming from a
+// default specified in the CWL file), then altered by your callback (allowing
+// you stage input files).
+//
+// The direction options can be supplied as blank strings, in which case
+// relative paths are not changed.
+//
+// Supplying the callback is optional, and if not supplied defaults to
+// DefaultInputFileCallback.
+func (input Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
+	var ifc InputFileCallback
+	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
+		ifc = optionalIFC[0]
+	} else {
+		ifc = DefaultInputFileCallback
+	}
+
+	var flattened []string
 	if input.Provided == nil {
 		// In case "input.Default == nil" should be validated by usage layer.
 		if input.Default != nil {
-			return input.Default.Flatten(input.Binding)
+			return input.Default.Flatten(input.Binding, cwlDir, ifc)
 		}
-		return []string{}
+		return flattened
 	}
-	flattened := []string{}
+
 	if repr := input.Types[0]; len(input.Types) == 1 {
 		switch repr.Type {
 		case "array":
-			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding)...)
+			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding, paramsDir, ifc)...)
 		case "int":
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
 		case "File":
 			switch provided := input.Provided.(type) {
 			case map[interface{}]interface{}:
 				// TODO: more strict type casting
-				flattened = append(flattened, fmt.Sprintf("%v", provided["location"]))
+				path := fmt.Sprintf("%v", provided["location"])
+				if paramsDir != "" && !filepath.IsAbs(path) {
+					path = filepath.Join(paramsDir, path)
+				}
+				path = ifc(path)
+				flattened = append(flattened, path)
 			default:
 			}
 		default:
@@ -249,14 +291,14 @@ func (ins Inputs) Less(i, j int) bool {
 	prev, next := ins[i].Binding, ins[j].Binding
 	switch [2]bool{prev == nil, next == nil} {
 	case [2]bool{true, true}:
-		return i < j
+		return ins[i].ID < ins[j].ID
 	case [2]bool{false, true}:
 		return prev.Position < 0
 	case [2]bool{true, false}:
 		return next.Position > 0
 	default:
 		if prev.Position == next.Position {
-			return i < j
+			return ins[i].ID < ins[j].ID
 		}
 		return prev.Position < next.Position
 	}

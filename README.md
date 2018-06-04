@@ -34,8 +34,9 @@ func main() {
 	fmt.Printf("%+v\n", doc)
 
 	// or get concrete command lines to run
-	cmds, _ := cwl.Resolve(cwlFile, paramsFile)
+	cmds, _ := cwl.Resolve("hello.cwl", "params.yaml")
 	fmt.Printf("%s\n", cmds)
+	cmds[0].Execute()
 }
 ```
 
