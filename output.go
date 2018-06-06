@@ -74,7 +74,9 @@ func (o *Output) Resolve(dir string) (interface{}, error) {
 					// we need the file size
 					info, err := os.Stat(path)
 					if err != nil {
-						continue
+						// we already know the file exists, so errors here
+						// should not be ignored
+						return nil, err
 					}
 
 					// and the sha1 hash of the file contents

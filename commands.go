@@ -114,9 +114,21 @@ func (c *Command) Execute() (interface{}, error) {
 	cmd.Dir = c.Cwd
 	cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
 
-	b, err := cmd.CombinedOutput()
+	if c.StdOutPath != "" {
+		outfile, err := os.Create(filepath.Join(c.Cwd, c.StdOutPath))
+		if err != nil {
+			return nil, err
+		}
+		defer outfile.Close()
+		cmd.Stdout = outfile
+	}
+
+	err = cmd.Start()
 	if err != nil {
-		fmt.Printf("output: %s\n", string(b))
+		return nil, err
+	}
+	err = cmd.Wait()
+	if err != nil {
 		return nil, err
 	}
 
