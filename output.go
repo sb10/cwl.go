@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Output represents and combines "CommandOutputParameter" and "WorkflowOutputParameter"
@@ -55,8 +54,10 @@ func (o Output) New(i interface{}) *Output {
 
 // Resolve generates an output parameter based on the files produced by a
 // CommandLineTool in the given output directory, specfied in the binding.
-func (o *Output) Resolve(dir string) (interface{}, error) {
-	result := make(map[interface{}]interface{})
+// stdoutPath is used if the type is 'stdout', to determine the path of the
+// output file.
+func (o *Output) Resolve(dir, stdoutPath string) (interface{}, error) {
+	var result map[interface{}]interface{}
 	if repr := o.Types[0]; len(o.Types) == 1 {
 		switch repr.Type {
 		case typeFile:
@@ -71,38 +72,59 @@ func (o *Output) Resolve(dir string) (interface{}, error) {
 				}
 
 				for _, path := range paths {
-					// we need the file size
-					info, err := os.Stat(path)
-					if err != nil {
-						// we already know the file exists, so errors here
-						// should not be ignored
-						return nil, err
-					}
-
-					// and the sha1 hash of the file contents
-					f, err := os.Open(path)
+					var err error
+					result, err = outputFileStats(dir, path)
 					if err != nil {
 						return nil, err
 					}
-					defer f.Close()
-
-					hash := sha1.New()
-					_, err = io.Copy(hash, f)
-					if err != nil {
-						return nil, err
-					}
-
-					result = map[interface{}]interface{}{
-						"class":    "File",
-						"location": strings.TrimPrefix(path, dir+"/"),
-						"size":     int(info.Size()),
-						"checksum": fmt.Sprintf("sha1$%x", hash.Sum(nil)),
-					}
+				}
+			}
+		case fieldStdOut:
+			if stdoutPath != "" {
+				var err error
+				result, err = outputFileStats(dir, filepath.Join(dir, stdoutPath))
+				if err != nil {
+					return nil, err
 				}
 			}
 		}
 	}
 	return result, nil
+}
+
+func outputFileStats(dir, path string) (map[interface{}]interface{}, error) {
+	// we need the file size
+	info, err := os.Stat(path)
+	if err != nil {
+		// we already know the file exists, so errors here
+		// should not be ignored
+		return nil, err
+	}
+
+	// and the sha1 hash of the file contents
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	hash := sha1.New()
+	_, err = io.Copy(hash, f)
+	if err != nil {
+		return nil, err
+	}
+
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[interface{}]interface{}{
+		"class":    "File",
+		"location": rel,
+		"size":     int(info.Size()),
+		"checksum": fmt.Sprintf("sha1$%x", hash.Sum(nil)),
+	}, nil
 }
 
 // Outputs represents "outputs" field in "CWL".

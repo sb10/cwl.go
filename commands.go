@@ -114,13 +114,25 @@ func (c *Command) Execute() (interface{}, error) {
 	cmd.Dir = c.Cwd
 	cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
 
-	if c.StdOutPath != "" {
-		outfile, err := os.Create(filepath.Join(c.Cwd, c.StdOutPath))
+	var outFile *os.File
+	if c.StdOutPath == "" && c.OutputBinding[0].Types[0].Type == "stdout" {
+		// this is a shortcut; StdOutPath should be set to a random file name
+		outFile, err = ioutil.TempFile(c.Cwd, "stdout")
 		if err != nil {
 			return nil, err
 		}
-		defer outfile.Close()
-		cmd.Stdout = outfile
+		c.StdOutPath = filepath.Base(outFile.Name())
+	}
+
+	if c.StdOutPath != "" {
+		if outFile == nil {
+			outFile, err = os.Create(filepath.Join(c.Cwd, c.StdOutPath))
+			if err != nil {
+				return nil, err
+			}
+		}
+		defer outFile.Close()
+		cmd.Stdout = outFile
 	}
 
 	err = cmd.Start()
@@ -147,7 +159,7 @@ func (c *Command) Execute() (interface{}, error) {
 
 	// otherwise, resolve the output binding
 	for _, o := range c.OutputBinding {
-		result, err := o.Resolve(c.Cwd)
+		result, err := o.Resolve(c.Cwd, c.StdOutPath)
 		if err != nil {
 			return nil, err
 		}

@@ -63,7 +63,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 7 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 8 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		cwlPath := filepath.Join(conformanceDir, test.Tool)
 		paramsPath := filepath.Join(conformanceDir, test.Job)
@@ -109,6 +109,16 @@ func TestConformance(t *testing.T) {
 
 		output, err := cmds[0].Execute()
 		if assert.Nil(err, test.Doc+" failed") {
+			// if we expect "Any" location, make the actual match
+			for k, v := range test.Output {
+				switch x := v.(type) {
+				case map[interface{}]interface{}:
+					if loc := x["location"]; loc == "Any" {
+						output.(map[string]interface{})[k].(map[interface{}]interface{})["location"] = "Any"
+					}
+				}
+			}
+
 			assert.Equal(test.Output, output, test.Doc)
 		}
 
