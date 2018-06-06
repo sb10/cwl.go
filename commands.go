@@ -202,7 +202,7 @@ func (c *Command) Execute() (interface{}, error) {
 
 	// otherwise, resolve the output binding
 	for _, o := range c.OutputBinding {
-		result, err := o.Resolve(c.Cwd, c.StdOutPath)
+		result, err := o.Resolve(c.Cwd, c.StdOutPath, c.StdErrPath)
 		if err != nil {
 			return nil, err
 		}

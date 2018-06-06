@@ -55,8 +55,8 @@ func (o Output) New(i interface{}) *Output {
 // Resolve generates an output parameter based on the files produced by a
 // CommandLineTool in the given output directory, specfied in the binding.
 // stdoutPath is used if the type is 'stdout', to determine the path of the
-// output file.
-func (o *Output) Resolve(dir, stdoutPath string) (interface{}, error) {
+// output file. Likewise for stderr.
+func (o *Output) Resolve(dir, stdoutPath, stderrPath string) (interface{}, error) {
 	var result map[interface{}]interface{}
 	if repr := o.Types[0]; len(o.Types) == 1 {
 		switch repr.Type {
@@ -83,6 +83,14 @@ func (o *Output) Resolve(dir, stdoutPath string) (interface{}, error) {
 			if stdoutPath != "" {
 				var err error
 				result, err = outputFileStats(dir, filepath.Join(dir, stdoutPath))
+				if err != nil {
+					return nil, err
+				}
+			}
+		case fieldStdErr:
+			if stderrPath != "" {
+				var err error
+				result, err = outputFileStats(dir, filepath.Join(dir, stderrPath))
 				if err != nil {
 					return nil, err
 				}
