@@ -28,9 +28,15 @@ package cwl
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
+
+	"github.com/robertkrimen/otto"
+	"github.com/robertkrimen/otto/underscore"
 )
 
 // ResolveConfig is used to configure a NewResolver(), specifying runtime
@@ -134,6 +140,9 @@ func NewResolver(root *Root, config ResolveConfig, cwlDir string) (*Resolver, er
 // Resolve takes the pre-decoded parameters for a workflow and resolves
 // everything to produce concrete commands to run. The path to the decoded
 // param file's dir must be provided to resolve relative paths.
+//
+// Also resolves any requirments, carrying out anything actionble, which may
+// involve creating files according to an InitialWorkDirRequirement.
 func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCallback) (Commands, error) {
 	r.ParamsDir = paramsDir
 
@@ -163,18 +172,25 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 		r.Config.TmpDirPrefix = tmpDirPrefix
 	}
 
+	// resolve requirments
+	err = r.resolveRequirments(ifc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
+	}
+
 	// create a concrete Command or recurse
 	var cmds Commands
 	if len(r.Workflow.BaseCommands) > 0 {
 		args := append(priors, append(arguments, inputs...)...)
 		cc := &Command{
-			ID:         r.Workflow.ID,
-			Cmd:        append(r.Workflow.BaseCommands[0:], args...),
-			Cwd:        cwd,
-			TmpPrefix:  tmpDirPrefix,
-			StdInPath:  r.Workflow.Stdin,
-			StdOutPath: r.Workflow.Stdout,
-			StdErrPath: r.Workflow.Stderr,
+			ID:            r.Workflow.ID,
+			Cmd:           append(r.Workflow.BaseCommands[0:], args...),
+			Cwd:           cwd,
+			TmpPrefix:     tmpDirPrefix,
+			StdInPath:     r.Workflow.Stdin,
+			StdOutPath:    r.Workflow.Stdout,
+			StdErrPath:    r.Workflow.Stderr,
+			OutputBinding: r.Workflow.Outputs,
 		}
 		cmds = append(cmds, cc)
 	} else {
@@ -244,7 +260,7 @@ func (r *Resolver) resolveInputs(paramsDir, cwlDir string, ifc InputFileCallback
 	sort.Sort(r.Workflow.Inputs)
 
 	for _, in := range r.Workflow.Inputs {
-		err = r.resolveInput(&in)
+		err = r.resolveInput(in)
 		if err != nil {
 			return priors, result, err
 		}
@@ -285,4 +301,103 @@ func (r *Resolver) resolveInput(input *Input) error {
 	}
 
 	return nil
+}
+
+// resolveRequirments
+func (r *Resolver) resolveRequirments(ifc InputFileCallback) error {
+	// set up our javascript interpreter, first dealing with imports
+	underscore.Disable()
+	for _, req := range r.Workflow.Requirements {
+		switch req.Class {
+		case "InlineJavascriptRequirement":
+			for _, jse := range req.ExpressionLib {
+				if jse.Kind == "$include" {
+					if jse.Value == "underscore.js" {
+						underscore.Enable()
+					}
+					// *** else, how to import arbitrary js packages?...
+				}
+			}
+		}
+	}
+	vm := otto.New()
+
+	// set up namespace context
+	inputs := make(map[string]map[string]string)
+	for _, input := range r.Workflow.Inputs {
+		// *** not sure why input.path is not set...
+		var path string
+		if input.Provided != nil {
+			if repr := input.Types[0]; len(input.Types) == 1 {
+				switch repr.Type {
+				case typeFile:
+					switch provided := input.Provided.(type) {
+					case map[interface{}]interface{}:
+						path = resolvePath(fmt.Sprintf("%v", provided["location"]), r.ParamsDir, ifc)
+					}
+				}
+			}
+		}
+		inputs[input.ID] = map[string]string{"path": path}
+	}
+	vm.Set("inputs", inputs)
+	vm.Set("runtime", map[string]string{
+		"outdir": r.Config.OutputDir,
+		"tmpdir": r.Config.TmpDirPrefix,
+		"cores":  r.Config.RuntimeValue("runtime.cores"),
+		"ram":    r.Config.RuntimeValue("runtime.ram"),
+	})
+
+	for _, req := range r.Workflow.Requirements {
+		switch req.Class {
+		case "InlineJavascriptRequirement":
+			// parse expressions
+			for _, jse := range req.ExpressionLib {
+				if jse.Kind == "$execute" {
+					_, err := vm.Run(jse.Value)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		case "InitialWorkDirRequirement":
+			for _, entry := range req.Listing {
+				basename := entry.EntryName
+				e := entry.Entry
+				contents, err := evaluateExpression(e, vm)
+				if err != nil {
+					return err
+				}
+
+				err = ioutil.WriteFile(filepath.Join(r.Config.OutputDir, basename), []byte(contents), 0600)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func evaluateExpression(e string, vm *otto.Otto) (string, error) {
+	if strings.HasPrefix(e, "$") {
+		if strings.HasPrefix(e, "$(") {
+			e = strings.TrimPrefix(e, "$(")
+			e = strings.TrimSuffix(e, ")")
+		} else if strings.HasPrefix(e, "${") {
+			e = strings.TrimPrefix(e, "${")
+			e = strings.TrimSuffix(e, "}")
+		}
+
+		// evaluate as javascript
+		value, err := vm.Run(e)
+		if err != nil {
+			return "", err
+		}
+		if e, err = value.ToString(); err != nil {
+			fmt.Printf("expression did not evaluate to a string: %+v\n", value)
+			return "", err
+		}
+	}
+	return e, nil
 }

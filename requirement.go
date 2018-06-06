@@ -43,27 +43,6 @@ func (r Requirement) New(i interface{}) Requirement {
 	return dest
 }
 
-// Requirements represents "requirements" field in CWL.
-type Requirements []Requirement
-
-// New constructs "Requirements" struct from interface.
-func (r Requirements) New(i interface{}) Requirements {
-	dest := Requirements{}
-	switch x := i.(type) {
-	case []interface{}:
-		for _, r := range x {
-			dest = append(dest, Requirement{}.New(r))
-		}
-	case map[string]interface{}:
-		for _, key := range sortKeys(x) {
-			r := Requirement{}.New(x[key])
-			r.Class = key
-			dest = append(dest, r)
-		}
-	}
-	return dest
-}
-
 // InlineJavascriptRequirement is supposed to be embedded to Requirement.
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#InlineJavascriptRequirement
 type InlineJavascriptRequirement struct {
@@ -159,4 +138,25 @@ type ShellCommandRequirement struct {
 type ResourceRequirement struct {
 	CoresMin int
 	CoresMax int
+}
+
+// Requirements represents "requirements" field in CWL.
+type Requirements []Requirement
+
+// New constructs "Requirements" struct from interface.
+func (r Requirements) New(i interface{}) Requirements {
+	dest := Requirements{}
+	switch x := i.(type) {
+	case []interface{}:
+		for _, r := range x {
+			dest = append(dest, Requirement{}.New(r))
+		}
+	case map[string]interface{}:
+		for _, key := range sortKeys(x) {
+			r := Requirement{}.New(x[key])
+			r.Class = key
+			dest = append(dest, r)
+		}
+	}
+	return dest
 }

@@ -63,7 +63,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 5 // TODO: not yet fully compatible, working on conformance test by test...
+	toDo := 6 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		cwlPath := filepath.Join(conformanceDir, test.Tool)
 		paramsPath := filepath.Join(conformanceDir, test.Job)
@@ -76,6 +76,11 @@ func TestConformance(t *testing.T) {
 		outDir := filepath.Join(tmpDir, "output")
 		tmpDirPrefix := filepath.Join(tmpDir, "tmp")
 		tmpOutDirPrefix := filepath.Join(tmpDir, "tmpout")
+
+		err = os.Mkdir(outDir, 0700)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		stagingDir := filepath.Join(tmpDir, "inputs")
 		err = os.Mkdir(stagingDir, 0700)

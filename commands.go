@@ -69,8 +69,9 @@ type Command struct {
 	// executed Cmd should be redirected to.
 	StdErrPath string
 
-	// Outputs is the resolved outputs specified in the CWL for this command.
-	Outputs interface{}
+	// OutputBinding is the output binding specified in the CWL for this
+	// command.
+	OutputBinding Outputs
 }
 
 // String allows for pretty-printing of a Command.
@@ -81,6 +82,7 @@ func (c Command) String() string {
 // Execute runs the Command's Cmd in the right Cwd, with $HOME and $TMPDIR set
 // as per Cwd and TmpPrefix, and with the environment variables from Env. The
 // unique tmp dir is deleted afterwards. STDIN, OUT and ERR are also handled.
+// Requiremnts are taken care of prior to execution.
 // The return value is the decoded JSON of the file "cwl.output.json" created by
 // Cmd in Cwd, if any. Otherwise it is the Outputs value.
 func (c *Command) Execute() (interface{}, error) {
@@ -118,6 +120,8 @@ func (c *Command) Execute() (interface{}, error) {
 		return nil, err
 	}
 
+	// return contents of cwl.output.json if it exists
+	out := make(map[string]interface{})
 	if jsonFile, err := os.Open(filepath.Join(c.Cwd, "cwl.output.json")); err == nil {
 		defer jsonFile.Close()
 		b, err := ioutil.ReadAll(jsonFile)
@@ -125,12 +129,19 @@ func (c *Command) Execute() (interface{}, error) {
 			return nil, err
 		}
 
-		var out map[string]interface{}
 		err = json.Unmarshal(b, &out)
 		return out, err
 	}
 
-	return c.Outputs, nil
+	// otherwise, resolve the output binding
+	for _, o := range c.OutputBinding {
+		result, err := o.Resolve(c.Cwd)
+		if err != nil {
+			return nil, err
+		}
+		out[o.ID] = result
+	}
+	return out, nil
 }
 
 // Commands is a slice of Command.

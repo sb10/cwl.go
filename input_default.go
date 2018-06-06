@@ -2,7 +2,6 @@ package cwl
 
 import (
 	"fmt"
-	"path/filepath"
 	"reflect"
 )
 
@@ -37,12 +36,7 @@ func (d *InputDefault) Flatten(binding *Binding, cwlDir string, optionalIFC ...I
 		// TODO: more strict type casting ;(
 		class, ok := v[fieldClass]
 		if ok && class == typeFile {
-			path := fmt.Sprintf("%v", v[fieldLocation])
-			if cwlDir != "" && !filepath.IsAbs(path) {
-				path = filepath.Join(cwlDir, path)
-			}
-			path = ifc(path)
-			flattened = append(flattened, path)
+			flattened = append(flattened, resolvePath(fmt.Sprintf("%v", v[fieldLocation]), cwlDir, ifc))
 		}
 	case string:
 		flattened = append(flattened, d.Self.(string))

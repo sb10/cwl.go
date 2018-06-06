@@ -23,11 +23,12 @@ type Input struct {
 	// Requirement ..
 	RequiredType *Type
 	Requirements Requirements
+	path         string
 }
 
 // New constructs "Input" struct from interface{}.
-func (input Input) New(i interface{}) Input {
-	dest := Input{}
+func (input Input) New(i interface{}) *Input {
+	dest := &Input{}
 	switch x := i.(type) {
 	case map[string]interface{}:
 		for key, v := range x {
@@ -61,7 +62,7 @@ func (input Input) New(i interface{}) Input {
 }
 
 // flatten
-func (input Input) flatten(typ Type, binding *Binding, paramsDir string, ifc InputFileCallback) []string {
+func (input *Input) flatten(typ Type, binding *Binding, paramsDir string, ifc InputFileCallback) []string {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
@@ -82,11 +83,8 @@ func (input Input) flatten(typ Type, binding *Binding, paramsDir string, ifc Inp
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					path := fmt.Sprintf("%v", v[fieldLocation])
-					if paramsDir != "" && !filepath.IsAbs(path) {
-						path = filepath.Join(paramsDir, path)
-					}
-					path = ifc(path)
+					path := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc)
+					input.path = path
 					separated = append(separated, path)
 				default:
 					// TODO:
@@ -107,7 +105,7 @@ func (input Input) flatten(typ Type, binding *Binding, paramsDir string, ifc Inp
 	return flattened
 }
 
-func (input Input) flattenWithRequiredType() []string {
+func (input *Input) flattenWithRequiredType() []string {
 	flattened := []string{}
 	key, needed := input.Types[0].NeedRequirement()
 	if !needed {
@@ -214,7 +212,7 @@ var DefaultInputFileCallback = func(path string) string {
 //
 // Supplying the callback is optional, and if not supplied defaults to
 // DefaultInputFileCallback.
-func (input Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
+func (input *Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
 	var ifc InputFileCallback
 	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
 		ifc = optionalIFC[0]
@@ -237,15 +235,12 @@ func (input Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCal
 			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding, paramsDir, ifc)...)
 		case "int":
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
-		case "File":
+		case typeFile:
 			switch provided := input.Provided.(type) {
 			case map[interface{}]interface{}:
 				// TODO: more strict type casting
-				path := fmt.Sprintf("%v", provided["location"])
-				if paramsDir != "" && !filepath.IsAbs(path) {
-					path = filepath.Join(paramsDir, path)
-				}
-				path = ifc(path)
+				path := resolvePath(fmt.Sprintf("%v", provided["location"]), paramsDir, ifc)
+				input.path = path
 				flattened = append(flattened, path)
 			default:
 			}
@@ -260,12 +255,19 @@ func (input Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCal
 	return flattened
 }
 
+func resolvePath(path, dir string, ifc InputFileCallback) string {
+	if dir != "" && !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	return ifc(path)
+}
+
 // Inputs represents "inputs" field in CWL.
-type Inputs []Input
+type Inputs []*Input
 
 // New constructs new "Inputs" struct.
 func (ins Inputs) New(i interface{}) Inputs {
-	dest := Inputs{}
+	var dest Inputs
 	switch x := i.(type) {
 	case []interface{}:
 		for _, v := range x {
