@@ -148,7 +148,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 
 	// resolve args
 	r.Parameters = params
-	arguments := r.resolveArguments()
+	arguments, shellQuote := r.resolveArguments()
 
 	// resolve inputs
 	priors, inputs, err := r.resolveInputs(paramsDir, r.CWLDir, ifc)
@@ -173,18 +173,36 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	}
 
 	// resolve requirments
-	err = r.resolveRequirments(ifc)
+	viaShell, err := r.resolveRequirments(ifc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
 	}
 
+	// if no basecommands, we use the first thing out of args or inputs as the
+	// base command
+	cmdStrs := r.Workflow.BaseCommands
+	if len(cmdStrs) == 0 {
+		if len(priors) > 0 {
+			cmdStrs = priors
+			priors = []string{}
+		} else if len(arguments) > 0 {
+			cmdStrs = arguments
+			arguments = []string{}
+		} else if len(inputs) > 0 {
+			cmdStrs = inputs
+			inputs = []string{}
+		}
+	}
+
 	// create a concrete Command or recurse
 	var cmds Commands
-	if len(r.Workflow.BaseCommands) > 0 {
+	if len(cmdStrs) > 0 {
 		args := append(priors, append(arguments, inputs...)...)
 		cc := &Command{
 			ID:            r.Workflow.ID,
-			Cmd:           append(r.Workflow.BaseCommands[0:], args...),
+			Cmd:           append(cmdStrs[0:], args...),
+			ViaShell:      viaShell,
+			ShellQuote:    shellQuote,
 			Cwd:           cwd,
 			TmpPrefix:     tmpDirPrefix,
 			StdInPath:     r.Workflow.Stdin,
@@ -235,17 +253,29 @@ func (r *Resolver) resolveStepParams(ins StepInputs) Parameters {
 }
 
 // resolveArguments resolves workflow arguments with "valueFrom" properties
-// against the config.
-func (r *Resolver) resolveArguments() []string {
+// against the config. Returns a slice of command line arguements and a bool,
+// which if true means shell metacharacters should be quoted.
+func (r *Resolver) resolveArguments() ([]string, bool) {
 	var result []string
+	var shellQuote bool
 	sort.Sort(r.Workflow.Arguments)
 	for i, arg := range r.Workflow.Arguments {
 		if arg.Binding != nil && arg.Binding.ValueFrom != nil {
-			r.Workflow.Arguments[i].Value = r.Config.RuntimeValue(arg.Binding.ValueFrom.Key())
+			// *** need to properly evaluate this if an expression?
+			str := arg.Binding.ValueFrom.string
+			if strings.HasPrefix(str, "$(") {
+				r.Workflow.Arguments[i].Value = r.Config.RuntimeValue(arg.Binding.ValueFrom.Key())
+			} else {
+				r.Workflow.Arguments[i].Value = str
+			}
+
+			if arg.Binding.ShellQuote {
+				shellQuote = true
+			}
 		}
 		result = append(result, r.Workflow.Arguments[i].Flatten()...)
 	}
-	return result
+	return result, shellQuote
 }
 
 // resolveInputs resolves each workflow input to get the concrete command line
@@ -303,8 +333,10 @@ func (r *Resolver) resolveInput(input *Input) error {
 	return nil
 }
 
-// resolveRequirments
-func (r *Resolver) resolveRequirments(ifc InputFileCallback) error {
+// resolveRequirments handles things like InlineJavascriptRequirement, creates
+// files specified in InitialWorkDirRequirement, and returns a bool to say if
+// command should be run via shell.
+func (r *Resolver) resolveRequirments(ifc InputFileCallback) (bool, error) {
 	// set up our javascript interpreter, first dealing with imports
 	underscore.Disable()
 	for _, req := range r.Workflow.Requirements {
@@ -348,15 +380,18 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) error {
 		"ram":    r.Config.RuntimeValue("runtime.ram"),
 	})
 
+	viaShell := false
 	for _, req := range r.Workflow.Requirements {
 		switch req.Class {
+		case "ShellCommandRequirement":
+			viaShell = true
 		case "InlineJavascriptRequirement":
 			// parse expressions
 			for _, jse := range req.ExpressionLib {
 				if jse.Kind == "$execute" {
 					_, err := vm.Run(jse.Value)
 					if err != nil {
-						return err
+						return viaShell, err
 					}
 				}
 			}
@@ -366,17 +401,17 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) error {
 				e := entry.Entry
 				contents, err := evaluateExpression(e, vm)
 				if err != nil {
-					return err
+					return viaShell, err
 				}
 
 				err = ioutil.WriteFile(filepath.Join(r.Config.OutputDir, basename), []byte(contents), 0600)
 				if err != nil {
-					return err
+					return viaShell, err
 				}
 			}
 		}
 	}
-	return nil
+	return viaShell, nil
 }
 
 func evaluateExpression(e string, vm *otto.Otto) (string, error) {

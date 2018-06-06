@@ -44,6 +44,15 @@ type Command struct {
 	// Cmd is the executable to run along with any command line arguments.
 	Cmd []string
 
+	// ViaShell causes Cmd to be joined into a space seperated string and passed
+	// to bash.
+	ViaShell bool
+
+	// ShellQuote, in combination with ViaShell, causes the string to be passed
+	// quoted, so that no interpretation of shell metacharacters or  directives
+	// occurs.
+	ShellQuote bool
+
 	// Cwd is the directory you should execute the Cmd in. $HOME should be set
 	// to this while executing.
 	Cwd string
@@ -110,10 +119,22 @@ func (c *Command) Execute() (interface{}, error) {
 	if len(c.Cmd) > 1 {
 		cmdArgs = c.Cmd[1:]
 	}
-	cmd := exec.Command(c.Cmd[0], cmdArgs...) // #nosec
+
+	var cmd *exec.Cmd
+	if c.ViaShell {
+		cmdStr := strings.Join(append([]string{c.Cmd[0]}, cmdArgs...), " ")
+		if c.ShellQuote {
+			cmdStr = "'" + cmdStr + "'"
+		}
+		cmd = exec.Command("bash", "-c", cmdStr) // #nosec
+	} else {
+		cmd = exec.Command(c.Cmd[0], cmdArgs...) // #nosec
+	}
+
 	cmd.Dir = c.Cwd
 	cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
 
+	// handle stdout redirects
 	var outFile *os.File
 	if c.StdOutPath == "" && c.OutputBinding[0].Types[0].Type == "stdout" {
 		// this is a shortcut; StdOutPath should be set to a random file name
@@ -133,6 +154,28 @@ func (c *Command) Execute() (interface{}, error) {
 		}
 		defer outFile.Close()
 		cmd.Stdout = outFile
+	}
+
+	// handle stderr redirects
+	var errFile *os.File
+	if c.StdErrPath == "" && c.OutputBinding[0].Types[0].Type == "stderr" {
+		// this is a shortcut; StdErrPath should be set to a random file name
+		errFile, err = ioutil.TempFile(c.Cwd, "stderr")
+		if err != nil {
+			return nil, err
+		}
+		c.StdErrPath = filepath.Base(errFile.Name())
+	}
+
+	if c.StdErrPath != "" {
+		if errFile == nil {
+			errFile, err = os.Create(filepath.Join(c.Cwd, c.StdErrPath))
+			if err != nil {
+				return nil, err
+			}
+		}
+		defer errFile.Close()
+		cmd.Stderr = errFile
 	}
 
 	err = cmd.Start()
