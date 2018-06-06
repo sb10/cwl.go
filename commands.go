@@ -26,6 +26,7 @@ package cwl
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -176,6 +177,24 @@ func (c *Command) Execute() (interface{}, error) {
 		}
 		defer errFile.Close()
 		cmd.Stderr = errFile
+	}
+
+	// handle stdin
+	if c.StdInPath != "" {
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+
+		f, err := os.Open(c.StdInPath)
+		if err != nil {
+			return nil, err
+		}
+
+		go func() {
+			defer stdin.Close()
+			io.Copy(stdin, f)
+		}()
 	}
 
 	err = cmd.Start()

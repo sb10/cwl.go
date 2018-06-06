@@ -173,7 +173,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	}
 
 	// resolve requirments
-	viaShell, err := r.resolveRequirments(ifc)
+	vm, viaShell, err := r.resolveRequirments(ifc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
 	}
@@ -198,6 +198,18 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	var cmds Commands
 	if len(cmdStrs) > 0 {
 		args := append(priors, append(arguments, inputs...)...)
+		stdinPath, err := evaluateExpression(r.Workflow.Stdin, vm)
+		if err != nil {
+			return nil, err
+		}
+		stdoutPath, err := evaluateExpression(r.Workflow.Stdout, vm)
+		if err != nil {
+			return nil, err
+		}
+		stderrPath, err := evaluateExpression(r.Workflow.Stderr, vm)
+		if err != nil {
+			return nil, err
+		}
 		cc := &Command{
 			ID:            r.Workflow.ID,
 			Cmd:           append(cmdStrs[0:], args...),
@@ -205,9 +217,9 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 			ShellQuote:    shellQuote,
 			Cwd:           cwd,
 			TmpPrefix:     tmpDirPrefix,
-			StdInPath:     r.Workflow.Stdin,
-			StdOutPath:    r.Workflow.Stdout,
-			StdErrPath:    r.Workflow.Stderr,
+			StdInPath:     stdinPath,
+			StdOutPath:    stdoutPath,
+			StdErrPath:    stderrPath,
 			OutputBinding: r.Workflow.Outputs,
 		}
 		cmds = append(cmds, cc)
@@ -334,9 +346,9 @@ func (r *Resolver) resolveInput(input *Input) error {
 }
 
 // resolveRequirments handles things like InlineJavascriptRequirement, creates
-// files specified in InitialWorkDirRequirement, and returns a bool to say if
-// command should be run via shell.
-func (r *Resolver) resolveRequirments(ifc InputFileCallback) (bool, error) {
+// files specified in InitialWorkDirRequirement, and returns a javascript vm for
+// resolving expressions, and a bool to say if command should be run via shell.
+func (r *Resolver) resolveRequirments(ifc InputFileCallback) (*otto.Otto, bool, error) {
 	// set up our javascript interpreter, first dealing with imports
 	underscore.Disable()
 	for _, req := range r.Workflow.Requirements {
@@ -391,7 +403,7 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) (bool, error) {
 				if jse.Kind == "$execute" {
 					_, err := vm.Run(jse.Value)
 					if err != nil {
-						return viaShell, err
+						return vm, viaShell, err
 					}
 				}
 			}
@@ -401,17 +413,17 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) (bool, error) {
 				e := entry.Entry
 				contents, err := evaluateExpression(e, vm)
 				if err != nil {
-					return viaShell, err
+					return vm, viaShell, err
 				}
 
 				err = ioutil.WriteFile(filepath.Join(r.Config.OutputDir, basename), []byte(contents), 0600)
 				if err != nil {
-					return viaShell, err
+					return vm, viaShell, err
 				}
 			}
 		}
 	}
-	return viaShell, nil
+	return vm, viaShell, nil
 }
 
 func evaluateExpression(e string, vm *otto.Otto) (string, error) {
