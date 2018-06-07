@@ -320,7 +320,10 @@ func (r *Resolver) resolveInputs(paramsDir, cwlDir string, ifc InputFileCallback
 			return priors, result, err
 		}
 
-		theseIns := in.Flatten(r.inputContext, paramsDir, cwlDir, ifc)
+		theseIns, err := in.Flatten(r.inputContext, paramsDir, cwlDir, ifc)
+		if err != nil {
+			return priors, result, err
+		}
 
 		if in.Binding == nil {
 			continue

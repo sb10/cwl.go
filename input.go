@@ -2,6 +2,8 @@ package cwl
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -61,7 +63,7 @@ func (input Input) New(i interface{}) *Input {
 }
 
 // flatten
-func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback) []string {
+func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback) ([]string, error) {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
@@ -82,8 +84,10 @@ func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					path := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc)
-					inputContext[input.ID] = map[string]string{"path": path}
+					path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+					if err != nil {
+						return nil, err
+					}
 					separated = append(separated, path)
 				default:
 					// TODO:
@@ -102,7 +106,7 @@ func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]
 		// TODO
 		//}
 	}
-	return flattened
+	return flattened, nil
 }
 
 func (input *Input) flattenWithRequiredType() []string {
@@ -215,7 +219,7 @@ var DefaultInputFileCallback = func(path string) string {
 //
 // The provided inputContext will have an entry filled in with key of this
 // input's ID, and value being some kind of resolved value.
-func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
+func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, optionalIFC ...InputFileCallback) ([]string, error) {
 	var ifc InputFileCallback
 	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
 		ifc = optionalIFC[0]
@@ -229,21 +233,27 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 		if input.Default != nil {
 			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc)
 		}
-		return flattened
+		return flattened, nil
 	}
 
 	if repr := input.Types[0]; len(input.Types) == 1 {
 		switch repr.Type {
 		case "array":
-			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc)...)
+			f, err := input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc)
+			if err != nil {
+				return nil, err
+			}
+			flattened = append(flattened, f...)
 		case "int":
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
 		case typeFile:
 			switch provided := input.Provided.(type) {
 			case map[interface{}]interface{}:
 				// TODO: more strict type casting
-				path := resolvePath(fmt.Sprintf("%v", provided["location"]), paramsDir, ifc)
-				inputContext[input.ID] = map[string]string{"path": path}
+				path, err := resolvePath(fmt.Sprintf("%v", provided["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+				if err != nil {
+					return nil, err
+				}
 				flattened = append(flattened, path)
 			default:
 			}
@@ -256,14 +266,37 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 		flattened = append([]string{input.Binding.Prefix}, flattened...)
 	}
 
-	return flattened
+	return flattened, nil
 }
 
-func resolvePath(path, dir string, ifc InputFileCallback) string {
+// resolvePath converts relative paths to absolute ones, converted by the given
+// callback. It also sets inputContext path and reads file content according to
+// LoadContents binding.
+func resolvePath(path, dir string, ifc InputFileCallback, binding *Binding, id string, inputContext map[string]interface{}) (string, error) {
 	if dir != "" && !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
 	}
-	return ifc(path)
+
+	inputContext[id] = map[string]string{}
+
+	if binding != nil && binding.LoadContents {
+		f, err := os.Open(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+
+		var header [65536]byte
+		n, err := io.ReadFull(f, header[:])
+		if err != nil && err != io.ErrUnexpectedEOF {
+			return "", err
+		}
+		inputContext[id].(map[string]string)["contents"] = string(header[0:n])
+	}
+
+	path = ifc(path)
+	inputContext[id].(map[string]string)["path"] = path
+	return path, nil
 }
 
 // Inputs represents "inputs" field in CWL.
