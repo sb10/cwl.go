@@ -67,7 +67,7 @@ func TestResolver(t *testing.T) {
 			paramsPath = ""
 		}
 
-		actual, err := Resolve(cwlPath, paramsPath, ResolveConfig{}, DefaultInputFileCallback)
+		actual, _, err := Resolve(cwlPath, paramsPath, ResolveConfig{}, DefaultInputFileCallback)
 		if !assert.Nil(err, name+" failed to Resolve()") {
 			continue
 		}

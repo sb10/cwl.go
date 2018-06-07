@@ -60,10 +60,6 @@ type Command struct {
 	// ExpressionTool. Must also specify VM.
 	Expression string
 
-	// VM is the javascript interpreter that knows the inputs to resolve the
-	// Expression against.
-	VM *otto.Otto
-
 	// Cwd is the directory you should execute the Cmd in. $HOME should be set
 	// to this while executing.
 	Cwd string
@@ -103,18 +99,21 @@ func (c Command) String() string {
 // as per Cwd and TmpPrefix, and with the environment variables from Env. The
 // unique tmp dir is deleted afterwards. STDIN, OUT and ERR are also handled.
 // Requiremnts are taken care of prior to execution.
+//
+// The vm arguement must be the Otto returned by the Resolve() call that
+// generated this Command. It contains the context needed to evalute any
+// expressions in the OutputBinding.
+//
 // The return value is the decoded JSON of the file "cwl.output.json" created by
 // Cmd in Cwd, if any. Otherwise it is the result of resolving the output
 // binding.
 //
 // For Commands that are for ExpressionTools, instead of running a Cmd, it just
 // resolves the expression to fill in the output.
-func (c *Command) Execute() (interface{}, error) {
+func (c *Command) Execute(vm *otto.Otto) (interface{}, error) {
 	out := make(map[string]interface{})
 	if len(c.Cmd) > 0 {
 		// execute the Cmd
-		//fmt.Printf("cmd: %+v\n", c.Cmd)
-
 		if _, err := os.Stat(c.TmpPrefix); err != nil && os.IsNotExist(err) {
 			err = os.MkdirAll(c.TmpPrefix, 0700)
 			if err != nil {
@@ -237,22 +236,21 @@ func (c *Command) Execute() (interface{}, error) {
 
 		// otherwise, resolve the output binding
 		for _, o := range c.OutputBinding {
-			result, err := o.Resolve(c.Cwd, c.StdOutPath, c.StdErrPath)
+			result, err := o.Resolve(c.Cwd, c.StdOutPath, c.StdErrPath, vm)
 			if err != nil {
 				return nil, err
 			}
 			out[o.ID] = result
 		}
-	} else if c.Expression != "" && c.VM != nil {
-		str, obj, err := evaluateExpression(c.Expression, c.VM)
+	} else if c.Expression != "" && vm != nil {
+		str, i, obj, err := evaluateExpression(c.Expression, vm)
 		if err != nil {
-			fmt.Printf("got execute evaluateExpression err %s\n", err)
 			return nil, err
 		}
 
-		if str != "" {
+		if str != "" || i != 0 {
 			// *** not sure what to do in this case...
-			return out, fmt.Errorf("expression tool returned string [%s]...\n", str)
+			return out, fmt.Errorf("expression tool returned string [%s] or numner [%f]", str, i)
 		}
 
 		for _, key := range obj.Keys() {

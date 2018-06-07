@@ -280,23 +280,31 @@ func resolvePath(path, dir string, ifc InputFileCallback, binding *Binding, id s
 	inputContext[id] = map[string]string{}
 
 	if binding != nil && binding.LoadContents {
-		f, err := os.Open(path)
+		content, err := getFileContents(path)
 		if err != nil {
 			return "", err
 		}
-		defer f.Close()
-
-		var header [65536]byte
-		n, err := io.ReadFull(f, header[:])
-		if err != nil && err != io.ErrUnexpectedEOF {
-			return "", err
-		}
-		inputContext[id].(map[string]string)["contents"] = string(header[0:n])
+		inputContext[id].(map[string]string)["contents"] = content
 	}
 
 	path = ifc(path)
 	inputContext[id].(map[string]string)["path"] = path
 	return path, nil
+}
+
+func getFileContents(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var header [65536]byte
+	n, err := io.ReadFull(f, header[:])
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
+	return string(header[0:n]), nil
 }
 
 // Inputs represents "inputs" field in CWL.

@@ -63,7 +63,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 19 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 20 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		cwlPath := filepath.Join(conformanceDir, test.Tool)
 		paramsPath := filepath.Join(conformanceDir, test.Job)
@@ -100,14 +100,14 @@ func TestConformance(t *testing.T) {
 			Cores:           2,
 		}
 
-		cmds, err := Resolve(cwlPath, paramsPath, config, ifc)
+		cmds, vm, err := Resolve(cwlPath, paramsPath, config, ifc)
 		if !assert.Nil(err, cwlPath+" failed to Resolve()") {
 			continue
 		}
 
 		assert.Equal(1, len(cmds), test.Doc)
 
-		output, err := cmds[0].Execute()
+		output, err := cmds[0].Execute(vm)
 		if assert.Nil(err, test.Doc+" failed") {
 			// if we expect "Any" location, make the actual match
 			for k, v := range test.Output {

@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/robertkrimen/otto"
 )
 
 // Output represents and combines "CommandOutputParameter" and "WorkflowOutputParameter"
@@ -55,34 +57,32 @@ func (o Output) New(i interface{}) *Output {
 // Resolve generates an output parameter based on the files produced by a
 // CommandLineTool in the given output directory, specfied in the binding.
 // stdoutPath is used if the type is 'stdout', to determine the path of the
-// output file. Likewise for stderr.
-func (o *Output) Resolve(dir, stdoutPath, stderrPath string) (interface{}, error) {
-	var result map[interface{}]interface{}
+// output file. Likewise for stderr. Expressions are evaluated with the given
+// javascript vm.
+func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (interface{}, error) {
+	var result map[string]interface{}
+	var results []map[string]interface{}
+	var t string
 	if repr := o.Types[0]; len(o.Types) == 1 {
+		t = repr.Type
 		switch repr.Type {
-		case typeFile:
-			if o.Binding != nil && o.Binding.Glob != nil {
-				var paths []string
-				for _, glob := range o.Binding.Glob {
-					files, err := filepath.Glob(dir + "/" + glob)
-					if err != nil {
-						return nil, err
-					}
-					paths = append(paths, files...)
-				}
+		case typeFile, typeInt:
+			paths, err := globPaths(o.Binding, dir)
+			if err != nil {
+				return nil, err
+			}
 
-				for _, path := range paths {
-					var err error
-					result, err = outputFileStats(dir, path)
-					if err != nil {
-						return nil, err
-					}
+			for _, path := range paths {
+				thisResult, err := outputFileStats(dir, path, o.Binding.LoadContents)
+				if err != nil {
+					return nil, err
 				}
+				results = append(results, thisResult)
 			}
 		case fieldStdOut:
 			if stdoutPath != "" {
 				var err error
-				result, err = outputFileStats(dir, filepath.Join(dir, stdoutPath))
+				result, err = outputFileStats(dir, filepath.Join(dir, stdoutPath), false)
 				if err != nil {
 					return nil, err
 				}
@@ -90,23 +90,81 @@ func (o *Output) Resolve(dir, stdoutPath, stderrPath string) (interface{}, error
 		case fieldStdErr:
 			if stderrPath != "" {
 				var err error
-				result, err = outputFileStats(dir, filepath.Join(dir, stderrPath))
+				result, err = outputFileStats(dir, filepath.Join(dir, stderrPath), false)
 				if err != nil {
 					return nil, err
 				}
 			}
 		}
 	}
-	return result, nil
+
+	if result == nil && len(results) > 0 {
+		result = results[0] // *** not sure what to do with the other files
+	}
+
+	if o.Binding != nil && o.Binding.Eval != "" {
+		err := vm.Set("self", results)
+		if err != nil {
+			return nil, err
+		}
+		str, fl, obj, err := evaluateExpression(o.Binding.Eval, vm)
+		if err != nil {
+			return nil, err
+		}
+
+		switch t {
+		case typeInt:
+			return int(fl), nil
+		default:
+			// *** don't know what to do if this was a File or something else,
+			// just treat it as a str?
+			if str != "" {
+				return str, nil
+			}
+			return obj, nil
+		}
+	}
+
+	// (to evaulate results we needed a map[string], but the final result we
+	//  return must be map[interface{}])
+	finalResult := make(map[interface{}]interface{})
+	for key, val := range result {
+		finalResult[key] = val
+	}
+
+	return finalResult, nil
 }
 
-func outputFileStats(dir, path string) (map[interface{}]interface{}, error) {
+func globPaths(binding *Binding, dir string) ([]string, error) {
+	if binding != nil && binding.Glob != nil {
+		var paths []string
+		for _, glob := range binding.Glob {
+			files, err := filepath.Glob(dir + "/" + glob)
+			if err != nil {
+				return nil, err
+			}
+			paths = append(paths, files...)
+		}
+		return paths, nil
+	}
+	return nil, nil
+}
+
+func outputFileStats(dir, path string, loadContents bool) (map[string]interface{}, error) {
 	// we need the file size
 	info, err := os.Stat(path)
 	if err != nil {
 		// we already know the file exists, so errors here
 		// should not be ignored
 		return nil, err
+	}
+
+	var content string
+	if loadContents {
+		content, err = getFileContents(path)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// and the sha1 hash of the file contents
@@ -127,12 +185,18 @@ func outputFileStats(dir, path string) (map[interface{}]interface{}, error) {
 		return nil, err
 	}
 
-	return map[interface{}]interface{}{
+	result := map[string]interface{}{
 		"class":    "File",
 		"location": rel,
 		"size":     int(info.Size()),
 		"checksum": fmt.Sprintf("sha1$%x", hash.Sum(nil)),
-	}, nil
+	}
+
+	if content != "" {
+		result["contents"] = content
+	}
+
+	return result, nil
 }
 
 // Outputs represents "outputs" field in "CWL".

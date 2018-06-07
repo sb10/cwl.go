@@ -145,7 +145,9 @@ func NewResolver(root *Root, config ResolveConfig, cwlDir string) (*Resolver, er
 //
 // Also resolves any requirments, carrying out anything actionble, which may
 // involve creating files according to an InitialWorkDirRequirement.
-func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCallback) (Commands, error) {
+//
+// The returned Otto can be used if you wish to Execute() any of the Commands.
+func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCallback) (Commands, *otto.Otto, error) {
 	r.ParamsDir = paramsDir
 
 	// resolve args
@@ -155,7 +157,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	// resolve inputs
 	priors, inputs, err := r.resolveInputs(paramsDir, r.CWLDir, ifc)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve required inputs: %v", err)
+		return nil, nil, fmt.Errorf("failed to resolve required inputs: %v", err)
 	}
 
 	// handle defaults for our config
@@ -163,7 +165,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	if cwd == "" {
 		cwd, err = os.Getwd()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get working directory: %s", err)
+			return nil, nil, fmt.Errorf("failed to get working directory: %s", err)
 		}
 		r.Config.OutputDir = cwd
 	}
@@ -177,7 +179,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	// resolve requirments
 	vm, viaShell, err := r.resolveRequirments()
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
+		return nil, nil, fmt.Errorf("failed to resolve requirements: %s", err)
 	}
 
 	if r.Workflow.Class == "ExpressionTool" {
@@ -186,9 +188,8 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 		return Commands{&Command{
 			ID:            r.Workflow.ID,
 			Expression:    r.Workflow.Expression,
-			VM:            vm,
 			OutputBinding: r.Workflow.Outputs,
-		}}, nil
+		}}, vm, nil
 	}
 
 	// if no basecommands, we use the first thing out of args or inputs as the
@@ -211,17 +212,17 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	var cmds Commands
 	if len(cmdStrs) > 0 {
 		args := append(priors, append(arguments, inputs...)...)
-		stdinPath, _, err := evaluateExpression(r.Workflow.Stdin, vm)
+		stdinPath, _, _, err := evaluateExpression(r.Workflow.Stdin, vm)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		stdoutPath, _, err := evaluateExpression(r.Workflow.Stdout, vm)
+		stdoutPath, _, _, err := evaluateExpression(r.Workflow.Stdout, vm)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		stderrPath, _, err := evaluateExpression(r.Workflow.Stderr, vm)
+		stderrPath, _, _, err := evaluateExpression(r.Workflow.Stderr, vm)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		cc := &Command{
 			ID:            r.Workflow.ID,
@@ -240,14 +241,14 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 		for _, step := range r.Workflow.Steps {
 			subR, err := NewResolver(step.Run.Workflow, r.Config, r.CWLDir)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 
 			stepParams := r.resolveStepParams(step.In)
 
-			subCmds, err := subR.Resolve(stepParams, paramsDir, ifc)
+			subCmds, _, err := subR.Resolve(stepParams, paramsDir, ifc)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			for _, c := range subCmds {
 				if c.ID == "" {
@@ -260,7 +261,7 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 		}
 	}
 
-	return cmds, nil
+	return cmds, vm, nil
 }
 
 // resolveStepParams compares the given step inputs to the stored user
@@ -411,7 +412,7 @@ func (r *Resolver) resolveRequirments() (*otto.Otto, bool, error) {
 			for _, entry := range req.Listing {
 				basename := entry.EntryName
 				e := entry.Entry
-				contents, _, err := evaluateExpression(e, vm)
+				contents, _, _, err := evaluateExpression(e, vm)
 				if err != nil {
 					return vm, viaShell, err
 				}
@@ -438,9 +439,10 @@ func trimExpression(e string) string {
 }
 
 // evaluateExpression evaluates the given string as javascript if it starts with
-// $( or ${, and returns either a string or an object. If not javascript, just
-// returns e unchanged.
-func evaluateExpression(e string, vm *otto.Otto) (string, *otto.Object, error) {
+// $( or ${, and returns either a string, float or an object. If not javascript,
+// just returns e unchanged.
+func evaluateExpression(e string, vm *otto.Otto) (string, float64, *otto.Object, error) {
+	var fl float64
 	if strings.HasPrefix(e, "$") {
 		e = trimExpression(e)
 
@@ -455,20 +457,26 @@ func evaluateExpression(e string, vm *otto.Otto) (string, *otto.Object, error) {
 			}
 			if err != nil {
 				fmt.Printf("got evaluateExpression err [%s] for [%s]\n", err, e)
-				return "", nil, err
+				return "", fl, nil, err
 			}
 		}
 
-		if value.IsString() {
-			if e, err = value.ToString(); err != nil {
-				return "", nil, err
+		switch {
+		case value.IsNumber():
+			f, err := value.ToFloat()
+			if err != nil {
+				return "", fl, nil, err
 			}
-			return e, nil, nil
-		}
-
-		if value.IsObject() {
-			return "", value.Object(), nil
+			return "", f, nil, nil
+		case value.IsString():
+			v, err := value.ToString()
+			if err != nil {
+				return "", fl, nil, err
+			}
+			return v, fl, nil, nil
+		case value.IsObject():
+			return "", fl, value.Object(), nil
 		}
 	}
-	return e, nil, nil
+	return e, fl, nil, nil
 }
