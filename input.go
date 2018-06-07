@@ -23,7 +23,6 @@ type Input struct {
 	// Requirement ..
 	RequiredType *Type
 	Requirements Requirements
-	path         string
 }
 
 // New constructs "Input" struct from interface{}.
@@ -62,7 +61,7 @@ func (input Input) New(i interface{}) *Input {
 }
 
 // flatten
-func (input *Input) flatten(typ Type, binding *Binding, paramsDir string, ifc InputFileCallback) []string {
+func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback) []string {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
@@ -84,7 +83,7 @@ func (input *Input) flatten(typ Type, binding *Binding, paramsDir string, ifc In
 						separated = append(separated, binding.Prefix)
 					}
 					path := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc)
-					input.path = path
+					inputContext[input.ID] = map[string]string{"path": path}
 					separated = append(separated, path)
 				default:
 					// TODO:
@@ -95,6 +94,7 @@ func (input *Input) flatten(typ Type, binding *Binding, paramsDir string, ifc In
 			flattened = append(flattened, separated...)
 		}
 	default:
+		inputContext[input.ID] = input.Provided
 		if input.RequiredType != nil {
 			flattened = append(flattened, input.flattenWithRequiredType()...)
 		}
@@ -205,14 +205,17 @@ var DefaultInputFileCallback = func(path string) string {
 // were files having their paths made absolute relative to the given paramsDir
 // (for files specified in the params file) or cwlDir (for files coming from a
 // default specified in the CWL file), then altered by your callback (allowing
-// you stage input files).
+// you to stage input files).
 //
-// The direction options can be supplied as blank strings, in which case
+// The directory options can be supplied as blank strings, in which case
 // relative paths are not changed.
 //
 // Supplying the callback is optional, and if not supplied defaults to
 // DefaultInputFileCallback.
-func (input *Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
+//
+// The provided inputContext will have an entry filled in with key of this
+// input's ID, and value being some kind of resolved value.
+func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, optionalIFC ...InputFileCallback) []string {
 	var ifc InputFileCallback
 	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
 		ifc = optionalIFC[0]
@@ -224,7 +227,7 @@ func (input *Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCa
 	if input.Provided == nil {
 		// In case "input.Default == nil" should be validated by usage layer.
 		if input.Default != nil {
-			return input.Default.Flatten(input.Binding, cwlDir, ifc)
+			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc)
 		}
 		return flattened
 	}
@@ -232,7 +235,7 @@ func (input *Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCa
 	if repr := input.Types[0]; len(input.Types) == 1 {
 		switch repr.Type {
 		case "array":
-			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding, paramsDir, ifc)...)
+			flattened = append(flattened, input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc)...)
 		case "int":
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
 		case typeFile:
@@ -240,11 +243,12 @@ func (input *Input) Flatten(paramsDir, cwlDir string, optionalIFC ...InputFileCa
 			case map[interface{}]interface{}:
 				// TODO: more strict type casting
 				path := resolvePath(fmt.Sprintf("%v", provided["location"]), paramsDir, ifc)
-				input.path = path
+				inputContext[input.ID] = map[string]string{"path": path}
 				flattened = append(flattened, path)
 			default:
 			}
 		default:
+			inputContext[input.ID] = input.Provided
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided))
 		}
 	}

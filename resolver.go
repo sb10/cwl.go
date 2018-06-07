@@ -113,13 +113,14 @@ func (r ResolveConfig) RuntimeValue(key string) string {
 
 // Resolver is a high-level struct with the logic for interpreting CWL.
 type Resolver struct {
-	Workflow   *Root
-	Parameters Parameters
-	Outdir     string
-	Quiet      bool
-	Config     ResolveConfig
-	CWLDir     string
-	ParamsDir  string
+	Workflow     *Root
+	Parameters   Parameters
+	Outdir       string
+	Quiet        bool
+	Config       ResolveConfig
+	CWLDir       string
+	ParamsDir    string
+	inputContext map[string]interface{}
 }
 
 // NewResolver creates a new Resolver struct for the given pre-decoded Root. The
@@ -130,10 +131,11 @@ func NewResolver(root *Root, config ResolveConfig, cwlDir string) (*Resolver, er
 		return nil, err
 	}
 	return &Resolver{
-		Workflow: root,
-		Outdir:   cwd,
-		Config:   config,
-		CWLDir:   cwlDir,
+		Workflow:     root,
+		Outdir:       cwd,
+		Config:       config,
+		CWLDir:       cwlDir,
+		inputContext: make(map[string]interface{}),
 	}, nil
 }
 
@@ -173,9 +175,20 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	}
 
 	// resolve requirments
-	vm, viaShell, err := r.resolveRequirments(ifc)
+	vm, viaShell, err := r.resolveRequirments()
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
+	}
+
+	if r.Workflow.Class == "ExpressionTool" {
+		// no command to run, but we still want to return a "Command" so the
+		// user can Execute() it and get the output
+		return Commands{&Command{
+			ID:            r.Workflow.ID,
+			Expression:    r.Workflow.Expression,
+			VM:            vm,
+			OutputBinding: r.Workflow.Outputs,
+		}}, nil
 	}
 
 	// if no basecommands, we use the first thing out of args or inputs as the
@@ -198,15 +211,15 @@ func (r *Resolver) Resolve(params Parameters, paramsDir string, ifc InputFileCal
 	var cmds Commands
 	if len(cmdStrs) > 0 {
 		args := append(priors, append(arguments, inputs...)...)
-		stdinPath, err := evaluateExpression(r.Workflow.Stdin, vm)
+		stdinPath, _, err := evaluateExpression(r.Workflow.Stdin, vm)
 		if err != nil {
 			return nil, err
 		}
-		stdoutPath, err := evaluateExpression(r.Workflow.Stdout, vm)
+		stdoutPath, _, err := evaluateExpression(r.Workflow.Stdout, vm)
 		if err != nil {
 			return nil, err
 		}
-		stderrPath, err := evaluateExpression(r.Workflow.Stderr, vm)
+		stderrPath, _, err := evaluateExpression(r.Workflow.Stderr, vm)
 		if err != nil {
 			return nil, err
 		}
@@ -306,11 +319,12 @@ func (r *Resolver) resolveInputs(paramsDir, cwlDir string, ifc InputFileCallback
 		if err != nil {
 			return priors, result, err
 		}
+
+		theseIns := in.Flatten(r.inputContext, paramsDir, cwlDir, ifc)
+
 		if in.Binding == nil {
 			continue
 		}
-
-		theseIns := in.Flatten(paramsDir, cwlDir, ifc)
 		if in.Binding.Position < 0 {
 			priors = append(priors, theseIns...)
 		} else {
@@ -348,7 +362,7 @@ func (r *Resolver) resolveInput(input *Input) error {
 // resolveRequirments handles things like InlineJavascriptRequirement, creates
 // files specified in InitialWorkDirRequirement, and returns a javascript vm for
 // resolving expressions, and a bool to say if command should be run via shell.
-func (r *Resolver) resolveRequirments(ifc InputFileCallback) (*otto.Otto, bool, error) {
+func (r *Resolver) resolveRequirments() (*otto.Otto, bool, error) {
 	// set up our javascript interpreter, first dealing with imports
 	underscore.Disable()
 	for _, req := range r.Workflow.Requirements {
@@ -367,24 +381,7 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) (*otto.Otto, bool, 
 	vm := otto.New()
 
 	// set up namespace context
-	inputs := make(map[string]map[string]string)
-	for _, input := range r.Workflow.Inputs {
-		// *** not sure why input.path is not set...
-		var path string
-		if input.Provided != nil {
-			if repr := input.Types[0]; len(input.Types) == 1 {
-				switch repr.Type {
-				case typeFile:
-					switch provided := input.Provided.(type) {
-					case map[interface{}]interface{}:
-						path = resolvePath(fmt.Sprintf("%v", provided["location"]), r.ParamsDir, ifc)
-					}
-				}
-			}
-		}
-		inputs[input.ID] = map[string]string{"path": path}
-	}
-	vm.Set("inputs", inputs)
+	vm.Set("inputs", r.inputContext)
 	vm.Set("runtime", map[string]string{
 		"outdir": r.Config.OutputDir,
 		"tmpdir": r.Config.TmpDirPrefix,
@@ -411,7 +408,7 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) (*otto.Otto, bool, 
 			for _, entry := range req.Listing {
 				basename := entry.EntryName
 				e := entry.Entry
-				contents, err := evaluateExpression(e, vm)
+				contents, _, err := evaluateExpression(e, vm)
 				if err != nil {
 					return vm, viaShell, err
 				}
@@ -426,25 +423,49 @@ func (r *Resolver) resolveRequirments(ifc InputFileCallback) (*otto.Otto, bool, 
 	return vm, viaShell, nil
 }
 
-func evaluateExpression(e string, vm *otto.Otto) (string, error) {
+func trimExpression(e string) string {
+	if strings.HasPrefix(e, "$(") {
+		e = strings.TrimPrefix(e, "$(")
+		e = strings.TrimSuffix(e, ")")
+	} else if strings.HasPrefix(e, "${") {
+		e = strings.TrimPrefix(e, "${")
+		e = strings.TrimSuffix(e, "}")
+	}
+	return e
+}
+
+// evaluateExpression evaluates the given string as javascript if it starts with
+// $( or ${, and returns either a string or an object. If not javascript, just
+// returns e unchanged.
+func evaluateExpression(e string, vm *otto.Otto) (string, *otto.Object, error) {
 	if strings.HasPrefix(e, "$") {
-		if strings.HasPrefix(e, "$(") {
-			e = strings.TrimPrefix(e, "$(")
-			e = strings.TrimSuffix(e, ")")
-		} else if strings.HasPrefix(e, "${") {
-			e = strings.TrimPrefix(e, "${")
-			e = strings.TrimSuffix(e, "}")
-		}
+		e = trimExpression(e)
 
 		// evaluate as javascript
 		value, err := vm.Run(e)
 		if err != nil {
-			return "", err
+			if strings.Contains(err.Error(), "Unexpected token :") {
+				// might be just a bare object, try again by assigning to a
+				// variable
+				e = "$cwlgoreturnval = " + e
+				value, err = vm.Run(e)
+			}
+			if err != nil {
+				fmt.Printf("got evaluateExpression err [%s] for [%s]\n", err, e)
+				return "", nil, err
+			}
 		}
-		if e, err = value.ToString(); err != nil {
-			fmt.Printf("expression did not evaluate to a string: %+v\n", value)
-			return "", err
+
+		if value.IsString() {
+			if e, err = value.ToString(); err != nil {
+				return "", nil, err
+			}
+			return e, nil, nil
+		}
+
+		if value.IsObject() {
+			return "", value.Object(), nil
 		}
 	}
-	return e, nil
+	return e, nil, nil
 }

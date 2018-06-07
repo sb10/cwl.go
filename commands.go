@@ -32,6 +32,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/robertkrimen/otto"
 )
 
 // Command is a high-level interpretation of a concrete command line that needs
@@ -53,6 +55,14 @@ type Command struct {
 	// quoted, so that no interpretation of shell metacharacters or  directives
 	// occurs.
 	ShellQuote bool
+
+	// Expression is an alternative to Cmd for CWL files that define an
+	// ExpressionTool. Must also specify VM.
+	Expression string
+
+	// VM is the javascript interpreter that knows the inputs to resolve the
+	// Expression against.
+	VM *otto.Otto
 
 	// Cwd is the directory you should execute the Cmd in. $HOME should be set
 	// to this while executing.
@@ -94,138 +104,191 @@ func (c Command) String() string {
 // unique tmp dir is deleted afterwards. STDIN, OUT and ERR are also handled.
 // Requiremnts are taken care of prior to execution.
 // The return value is the decoded JSON of the file "cwl.output.json" created by
-// Cmd in Cwd, if any. Otherwise it is the Outputs value.
+// Cmd in Cwd, if any. Otherwise it is the result of resolving the output
+// binding.
+//
+// For Commands that are for ExpressionTools, instead of running a Cmd, it just
+// resolves the expression to fill in the output.
 func (c *Command) Execute() (interface{}, error) {
-	//fmt.Printf("cmd: %+v\n", c.Cmd)
-
-	if _, err := os.Stat(c.TmpPrefix); err != nil && os.IsNotExist(err) {
-		err = os.MkdirAll(c.TmpPrefix, 0700)
-		if err != nil {
-			return nil, err
-		}
-	}
-	tmpDir, err := ioutil.TempDir(c.TmpPrefix, "cwlgo.tmp")
-	if err != nil {
-		return nil, err
-	}
-	defer os.RemoveAll(tmpDir)
-
-	if _, err := os.Stat(c.Cwd); err != nil && os.IsNotExist(err) {
-		err = os.MkdirAll(c.Cwd, 0700)
-		if err != nil {
-			return nil, err
-		}
-	}
-	var cmdArgs []string
-	if len(c.Cmd) > 1 {
-		cmdArgs = c.Cmd[1:]
-	}
-
-	var cmd *exec.Cmd
-	if c.ViaShell {
-		cmdStr := strings.Join(append([]string{c.Cmd[0]}, cmdArgs...), " ")
-		if c.ShellQuote {
-			cmdStr = "'" + cmdStr + "'"
-		}
-		cmd = exec.Command("bash", "-c", cmdStr) // #nosec
-	} else {
-		cmd = exec.Command(c.Cmd[0], cmdArgs...) // #nosec
-	}
-
-	cmd.Dir = c.Cwd
-	cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
-
-	// handle stdout redirects
-	var outFile *os.File
-	if c.StdOutPath == "" && c.OutputBinding[0].Types[0].Type == "stdout" {
-		// this is a shortcut; StdOutPath should be set to a random file name
-		outFile, err = ioutil.TempFile(c.Cwd, "stdout")
-		if err != nil {
-			return nil, err
-		}
-		c.StdOutPath = filepath.Base(outFile.Name())
-	}
-
-	if c.StdOutPath != "" {
-		if outFile == nil {
-			outFile, err = os.Create(filepath.Join(c.Cwd, c.StdOutPath))
-			if err != nil {
-				return nil, err
-			}
-		}
-		defer outFile.Close()
-		cmd.Stdout = outFile
-	}
-
-	// handle stderr redirects
-	var errFile *os.File
-	if c.StdErrPath == "" && c.OutputBinding[0].Types[0].Type == "stderr" {
-		// this is a shortcut; StdErrPath should be set to a random file name
-		errFile, err = ioutil.TempFile(c.Cwd, "stderr")
-		if err != nil {
-			return nil, err
-		}
-		c.StdErrPath = filepath.Base(errFile.Name())
-	}
-
-	if c.StdErrPath != "" {
-		if errFile == nil {
-			errFile, err = os.Create(filepath.Join(c.Cwd, c.StdErrPath))
-			if err != nil {
-				return nil, err
-			}
-		}
-		defer errFile.Close()
-		cmd.Stderr = errFile
-	}
-
-	// handle stdin
-	if c.StdInPath != "" {
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return nil, err
-		}
-
-		f, err := os.Open(c.StdInPath)
-		if err != nil {
-			return nil, err
-		}
-
-		go func() {
-			defer stdin.Close()
-			io.Copy(stdin, f)
-		}()
-	}
-
-	err = cmd.Start()
-	if err != nil {
-		return nil, err
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return nil, err
-	}
-
-	// return contents of cwl.output.json if it exists
 	out := make(map[string]interface{})
-	if jsonFile, err := os.Open(filepath.Join(c.Cwd, "cwl.output.json")); err == nil {
-		defer jsonFile.Close()
-		b, err := ioutil.ReadAll(jsonFile)
+	if len(c.Cmd) > 0 {
+		// execute the Cmd
+		//fmt.Printf("cmd: %+v\n", c.Cmd)
+
+		if _, err := os.Stat(c.TmpPrefix); err != nil && os.IsNotExist(err) {
+			err = os.MkdirAll(c.TmpPrefix, 0700)
+			if err != nil {
+				return nil, err
+			}
+		}
+		tmpDir, err := ioutil.TempDir(c.TmpPrefix, "cwlgo.tmp")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmpDir)
+
+		if _, err := os.Stat(c.Cwd); err != nil && os.IsNotExist(err) {
+			err = os.MkdirAll(c.Cwd, 0700)
+			if err != nil {
+				return nil, err
+			}
+		}
+		var cmdArgs []string
+		if len(c.Cmd) > 1 {
+			cmdArgs = c.Cmd[1:]
+		}
+
+		var cmd *exec.Cmd
+		if c.ViaShell {
+			cmdStr := strings.Join(append([]string{c.Cmd[0]}, cmdArgs...), " ")
+			if c.ShellQuote {
+				cmdStr = "'" + cmdStr + "'"
+			}
+			cmd = exec.Command("bash", "-c", cmdStr) // #nosec
+		} else {
+			cmd = exec.Command(c.Cmd[0], cmdArgs...) // #nosec
+		}
+
+		cmd.Dir = c.Cwd
+		cmd.Env = append(c.Env, "HOME="+c.Cwd, "TMPDIR="+tmpDir, "PATH="+os.Getenv("PATH")) // *** no PATH in container
+
+		// handle stdout redirects
+		var outFile *os.File
+		if c.StdOutPath == "" && c.OutputBinding[0].Types[0].Type == "stdout" {
+			// this is a shortcut; StdOutPath should be set to a random file name
+			outFile, err = ioutil.TempFile(c.Cwd, "stdout")
+			if err != nil {
+				return nil, err
+			}
+			c.StdOutPath = filepath.Base(outFile.Name())
+		}
+
+		if c.StdOutPath != "" {
+			if outFile == nil {
+				outFile, err = os.Create(filepath.Join(c.Cwd, c.StdOutPath))
+				if err != nil {
+					return nil, err
+				}
+			}
+			defer outFile.Close()
+			cmd.Stdout = outFile
+		}
+
+		// handle stderr redirects
+		var errFile *os.File
+		if c.StdErrPath == "" && c.OutputBinding[0].Types[0].Type == "stderr" {
+			// this is a shortcut; StdErrPath should be set to a random file name
+			errFile, err = ioutil.TempFile(c.Cwd, "stderr")
+			if err != nil {
+				return nil, err
+			}
+			c.StdErrPath = filepath.Base(errFile.Name())
+		}
+
+		if c.StdErrPath != "" {
+			if errFile == nil {
+				errFile, err = os.Create(filepath.Join(c.Cwd, c.StdErrPath))
+				if err != nil {
+					return nil, err
+				}
+			}
+			defer errFile.Close()
+			cmd.Stderr = errFile
+		}
+
+		// handle stdin
+		if c.StdInPath != "" {
+			stdin, err := cmd.StdinPipe()
+			if err != nil {
+				return nil, err
+			}
+
+			f, err := os.Open(c.StdInPath)
+			if err != nil {
+				return nil, err
+			}
+
+			go func() {
+				defer stdin.Close()
+				io.Copy(stdin, f)
+			}()
+		}
+
+		err = cmd.Start()
+		if err != nil {
+			return nil, err
+		}
+		err = cmd.Wait()
 		if err != nil {
 			return nil, err
 		}
 
-		err = json.Unmarshal(b, &out)
-		return out, err
-	}
+		// return contents of cwl.output.json if it exists
+		if jsonFile, err := os.Open(filepath.Join(c.Cwd, "cwl.output.json")); err == nil {
+			defer jsonFile.Close()
+			b, err := ioutil.ReadAll(jsonFile)
+			if err != nil {
+				return nil, err
+			}
 
-	// otherwise, resolve the output binding
-	for _, o := range c.OutputBinding {
-		result, err := o.Resolve(c.Cwd, c.StdOutPath, c.StdErrPath)
+			err = json.Unmarshal(b, &out)
+			return out, err
+		}
+
+		// otherwise, resolve the output binding
+		for _, o := range c.OutputBinding {
+			result, err := o.Resolve(c.Cwd, c.StdOutPath, c.StdErrPath)
+			if err != nil {
+				return nil, err
+			}
+			out[o.ID] = result
+		}
+	} else if c.Expression != "" && c.VM != nil {
+		str, obj, err := evaluateExpression(c.Expression, c.VM)
 		if err != nil {
+			fmt.Printf("got execute evaluateExpression err %s\n", err)
 			return nil, err
 		}
-		out[o.ID] = result
+
+		if str != "" {
+			// *** not sure what to do in this case...
+			return out, fmt.Errorf("expression tool returned string [%s]...\n", str)
+		}
+
+		for _, key := range obj.Keys() {
+			val, err := obj.Get(key)
+			if err != nil {
+				return out, err
+			}
+			switch {
+			case val.IsNumber():
+				f, err := val.ToFloat()
+				if err != nil {
+					return out, err
+				}
+				i, err := val.ToInteger()
+				if err != nil {
+					return out, err
+				}
+				if float64(i) == f {
+					out[key] = int(i)
+				} else {
+					out[key] = f
+				}
+			case val.IsBoolean():
+				v, err := val.ToBoolean()
+				if err != nil {
+					return out, err
+				}
+				out[key] = v
+			case val.IsString():
+				v, err := val.ToString()
+				if err != nil {
+					return out, err
+				}
+				out[key] = v
+			}
+		}
 	}
 	return out, nil
 }

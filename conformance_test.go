@@ -63,7 +63,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 13 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 14 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		cwlPath := filepath.Join(conformanceDir, test.Tool)
 		paramsPath := filepath.Join(conformanceDir, test.Job)

@@ -20,26 +20,23 @@ func (d InputDefault) New(i interface{}) *InputDefault {
 // Flatten returns the flattened inputs in a []string, with any of those which
 // were files with relative paths being made absolute relative to the given
 // cwl directory. If cwlDir is a blank string, the path is not altered. The
-// optionalIFC allows you to define staging; if not supplied, defaults to
-// DefaultInputFileCallback.
-func (d *InputDefault) Flatten(binding *Binding, cwlDir string, optionalIFC ...InputFileCallback) []string {
-	var ifc InputFileCallback
-	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
-		ifc = optionalIFC[0]
-	} else {
-		ifc = DefaultInputFileCallback
-	}
-
+// ifc allows you to define staging.
+func (d *InputDefault) Flatten(binding *Binding, id string, inputContext map[string]interface{}, cwlDir string, ifc InputFileCallback) []string {
 	var flattened []string
 	switch v := d.Self.(type) {
 	case map[string]interface{}:
 		// TODO: more strict type casting ;(
 		class, ok := v[fieldClass]
 		if ok && class == typeFile {
-			flattened = append(flattened, resolvePath(fmt.Sprintf("%v", v[fieldLocation]), cwlDir, ifc))
+			path := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), cwlDir, ifc)
+			inputContext[id] = map[string]string{"path": path}
+			flattened = append(flattened, path)
 		}
 	case string:
+		inputContext[id] = d.Self.(string)
 		flattened = append(flattened, d.Self.(string))
+	default:
+		inputContext[id] = d.Self
 	}
 	if binding != nil && binding.Prefix != "" {
 		flattened = append([]string{binding.Prefix}, flattened...)
