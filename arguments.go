@@ -1,5 +1,10 @@
 package cwl
 
+import (
+	"sort"
+	"strings"
+)
+
 // Argument represents an element of "arguments" of CWL
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#CommandLineTool
 type Argument struct {
@@ -76,4 +81,30 @@ func (args Arguments) Less(i, j int) bool {
 // Swap for sorting.
 func (args Arguments) Swap(i, j int) {
 	args[i], args[j] = args[j], args[i]
+}
+
+// Resolve goes through the arguments with "valueFrom" properties and returns
+// concrete values from the given config. Also returns a bool, which if true
+// means shell metacharacters should be quoted.
+func (args Arguments) Resolve(config ResolveConfig) ([]string, bool) {
+	var result []string
+	var shellQuote bool
+	sort.Sort(args)
+	for i, arg := range args {
+		if arg.Binding != nil && arg.Binding.ValueFrom != nil {
+			// *** need to properly evaluate this if an expression?
+			str := arg.Binding.ValueFrom.string
+			if strings.HasPrefix(str, "$(") {
+				args[i].Value = config.RuntimeValue(arg.Binding.ValueFrom.Key())
+			} else {
+				args[i].Value = str
+			}
+
+			if arg.Binding.ShellQuote {
+				shellQuote = true
+			}
+		}
+		result = append(result, args[i].Flatten()...)
+	}
+	return result, shellQuote
 }

@@ -27,6 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -199,6 +200,14 @@ func TestDecode(t *testing.T) {
 			}
 		})
 	}
+}
+
+func openFile(t *testing.T, path string) *os.File {
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
 }
 
 func lineNumber() string {

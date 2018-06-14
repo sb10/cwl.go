@@ -269,6 +269,34 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 	return flattened, nil
 }
 
+// Resolve sets Provided if the supplied params have our ID. It also handles
+// requirements.
+func (input *Input) Resolve(params Parameters, reqs Requirements) error {
+	if provided, ok := params[input.ID]; ok {
+		// *** we know what type this is supposed to be, eg. a File. If not a
+		// file, but the output definition of a parent step, then we need to
+		// resolve that to that parent's output file now...
+		input.Provided = provided
+	}
+
+	if input.Default == nil && input.Binding == nil && input.Provided == nil {
+		return fmt.Errorf("input `%s` doesn't have a default, and not provided", input.ID)
+	}
+
+	if key, needed := input.Types[0].NeedRequirement(); needed {
+		for _, req := range reqs {
+			for _, requiredtype := range req.Types {
+				if requiredtype.Name == key {
+					input.RequiredType = &requiredtype
+					input.Requirements = reqs
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // resolvePath converts relative paths to absolute ones, converted by the given
 // callback. It also sets inputContext path and reads file content according to
 // LoadContents binding.
@@ -297,14 +325,16 @@ func getFileContents(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() {
+		err = f.Close()
+	}()
 
 	var header [65536]byte
-	n, err := io.ReadFull(f, header[:])
-	if err != nil && err != io.ErrUnexpectedEOF {
-		return "", err
+	n, errr := io.ReadFull(f, header[:])
+	if errr != nil && errr != io.ErrUnexpectedEOF {
+		return "", errr
 	}
-	return string(header[0:n]), nil
+	return string(header[0:n]), err
 }
 
 // Inputs represents "inputs" field in CWL.
@@ -326,6 +356,43 @@ func (ins Inputs) New(i interface{}) Inputs {
 		}
 	}
 	return dest
+}
+
+// Resolve gets the concrete command line arguments (those that should go before
+// anything else, and those that should go afterwards) for each input, by
+// considering the provided params (and directories, for resolving relative
+// paths). It also fills in the given context, for use with interpreting
+// expressions.
+func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir string, ifc InputFileCallback, inputContext map[string]interface{}) (priors []string, result []string, err error) {
+	defer func() {
+		if i := recover(); i != nil {
+			err = fmt.Errorf("failed to resolve required inputs against provided params: %v", i)
+		}
+	}()
+
+	sort.Sort(ins)
+
+	for _, in := range ins {
+		err = in.Resolve(params, reqs)
+		if err != nil {
+			return priors, result, err
+		}
+
+		theseIns, err := in.Flatten(inputContext, paramsDir, CWLDir, ifc)
+		if err != nil {
+			return priors, result, err
+		}
+
+		if in.Binding == nil {
+			continue
+		}
+		if in.Binding.Position < 0 {
+			priors = append(priors, theseIns...)
+		} else {
+			result = append(result, theseIns...)
+		}
+	}
+	return priors, result, nil
 }
 
 // Len for sorting.

@@ -24,6 +24,7 @@
 package cwl
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -34,6 +35,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	yaml "gopkg.in/yaml.v2"
 )
+
+var conTestNum = flag.Int("ctest", 0, "run only this conformance test")
 
 type conformanceTest struct {
 	Tool   string
@@ -63,8 +66,15 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 20 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 21 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
+		if *conTestNum != 0 {
+			done++
+			if done != *conTestNum {
+				continue
+			}
+		}
+
 		cwlPath := filepath.Join(conformanceDir, test.Tool)
 		paramsPath := filepath.Join(conformanceDir, test.Job)
 
@@ -100,25 +110,35 @@ func TestConformance(t *testing.T) {
 			Cores:           2,
 		}
 
-		cmds, vm, err := Resolve(cwlPath, paramsPath, config, ifc)
+		r, cmds, err := Resolve("myworkflow", cwlPath, paramsPath, config, ifc)
 		if !assert.Nil(err, cwlPath+" failed to Resolve()") {
-			continue
+			break
 		}
 
-		assert.Equal(1, len(cmds), test.Doc)
+		assert.True(len(cmds) >= 1, test.Doc)
 
-		output, err := cmds[0].Execute(vm)
-		if assert.Nil(err, test.Doc+" failed") {
+		// var output interface{}
+		var erre error
+		for _, cmd := range cmds {
+			_, erre = cmd.Execute()
+			if !assert.Nil(erre, test.Doc+" failed") {
+				break
+			}
+		}
+		output := r.Output()
+
+		if erre == nil {
 			// if we expect "Any" location, make the actual match
 			for k, v := range test.Output {
 				switch x := v.(type) {
 				case map[interface{}]interface{}:
 					if loc := x["location"]; loc == "Any" {
-						m := output.(map[string]interface{})
-						if n, exists := m[k]; exists {
-							o := n.(map[interface{}]interface{})
-							if _, exists := o["location"]; exists {
-								o["location"] = "Any"
+						if m, ok := output.(map[string]interface{}); ok {
+							if n, exists := m[k]; exists {
+								o := n.(map[interface{}]interface{})
+								if _, exists := o["location"]; exists {
+									o["location"] = "Any"
+								}
 							}
 						}
 					}
@@ -126,6 +146,10 @@ func TestConformance(t *testing.T) {
 			}
 
 			assert.Equal(test.Output, output, test.Doc)
+		}
+
+		if *conTestNum != 0 {
+			break
 		}
 
 		done++
@@ -138,11 +162,11 @@ func TestConformance(t *testing.T) {
 // copyFile copies a file from src to dst. If src and dst files exist, and are
 // the same, then return success. Otherise, attempt to create a hard link
 // between the two files. If that fails, copy the file contents from src to dst.
-func copyFile(src, dst string) (err error) {
+func copyFile(src, dst string) error {
 	// from https://stackoverflow.com/a/21067803/675083
 	sfi, err := os.Stat(src)
 	if err != nil {
-		return
+		return err
 	}
 	if !sfi.Mode().IsRegular() {
 		// cannot copy non-regular files (e.g., directories,
@@ -152,37 +176,36 @@ func copyFile(src, dst string) (err error) {
 	dfi, err := os.Stat(dst)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return
+			return err
 		}
 	} else {
 		if !(dfi.Mode().IsRegular()) {
 			return fmt.Errorf("copyFile: non-regular destination file %s (%q)", dfi.Name(), dfi.Mode().String())
 		}
 		if os.SameFile(sfi, dfi) {
-			return
+			return err
 		}
 	}
 	if err = os.Link(src, dst); err == nil {
-		return
+		return err
 	}
-	err = copyFileContents(src, dst)
-	return
+	return copyFileContents(src, dst)
 }
 
 // copyFileContents copies the contents of the file named src to the file named
 // by dst. The file will be created if it does not already exist. If the
 // destination file exists, all it's contents will be replaced by the contents
 // of the source file.
-func copyFileContents(src, dst string) (err error) {
+func copyFileContents(src, dst string) error {
 	// from https://stackoverflow.com/a/21067803/675083
 	in, err := os.Open(src)
 	if err != nil {
-		return
+		return err
 	}
 	defer in.Close()
 	out, err := os.Create(dst)
 	if err != nil {
-		return
+		return err
 	}
 	defer func() {
 		cerr := out.Close()
@@ -191,8 +214,8 @@ func copyFileContents(src, dst string) (err error) {
 		}
 	}()
 	if _, err = io.Copy(out, in); err != nil {
-		return
+		return err
 	}
 	err = out.Sync()
-	return
+	return err
 }

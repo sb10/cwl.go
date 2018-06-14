@@ -172,7 +172,9 @@ func outputFileStats(dir, path string, loadContents bool) (map[string]interface{
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		err = f.Close()
+	}()
 
 	hash := sha1.New()
 	_, err = io.Copy(hash, f)
@@ -196,7 +198,7 @@ func outputFileStats(dir, path string, loadContents bool) (map[string]interface{
 		result["contents"] = content
 	}
 
-	return result, nil
+	return result, err
 }
 
 // Outputs represents "outputs" field in "CWL".

@@ -105,3 +105,10 @@ const (
 	typeFile = "File"
 	// typeDirectory = "directory"
 )
+
+// classes
+const (
+	classWorkflow   = "Workflow"
+	classCommand    = "CommandLineTool"
+	classExpression = "ExpressionTool"
+)

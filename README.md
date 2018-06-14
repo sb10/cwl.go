@@ -33,10 +33,14 @@ func main() {
 	doc.Decode(cwlFile)
 	fmt.Printf("%+v\n", doc)
 
-	// or get concrete command lines to run
-	cmds, _ := cwl.Resolve("hello.cwl", "params.yaml")
-	fmt.Printf("%s\n", cmds)
-	cmds[0].Execute()
+	// or get command lines to run
+	r, cmds, _ := cwl.Resolve("hello.cwl", "params.yaml")
+	for _, cmd := range cmds {
+		// arrange to only execute these in the correct order according to the
+		// dependency tree
+		output, _ := cmd.Execute()
+	}
+	fmt.Printf("%+v\n", r.Output())
 }
 ```
 

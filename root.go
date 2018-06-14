@@ -11,7 +11,6 @@ import (
 	"sort"
 
 	"github.com/otiai10/yaml2json"
-	"github.com/robertkrimen/otto"
 )
 
 // NewCWL ...
@@ -169,9 +168,14 @@ func (root *Root) AsStep(i interface{}) *Root {
 // relative paths in the CWL and params file as relative to those files.)
 // paramsPath can be an empty string if no parameters file is required.
 //
-// To actually run the commands you can Execute() each of them, requiring the
-// returned Otto object.
-func Resolve(cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCallback) (Commands, *otto.Otto, error) {
+// name should uniquely identify this combination of CWL and parameters.
+//
+// To actually run the commands you can Execute() each of them in the right
+// order.
+//
+// A Resolver is returned, on which you can call Output() to get the final
+// output after Execute()ing all the commands.
+func Resolve(name string, cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCallback) (*Resolver, Commands, error) {
 	cwlPath, err := filepath.Abs(cwlPath)
 	if err != nil {
 		return nil, nil, err
@@ -181,7 +185,9 @@ func Resolve(cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCall
 	if err != nil {
 		return nil, nil, err
 	}
-	defer cwlF.Close()
+	defer func() {
+		err = cwlF.Close()
+	}()
 
 	root := NewCWL()
 	err = root.Decode(cwlF)
@@ -201,11 +207,13 @@ func Resolve(cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCall
 			return nil, nil, err
 		}
 
-		paramsF, err := os.Open(paramsPath)
-		if err != nil {
-			return nil, nil, err
+		paramsF, erro := os.Open(paramsPath)
+		if erro != nil {
+			return nil, nil, erro
 		}
-		defer paramsF.Close()
+		defer func() {
+			err = paramsF.Close()
+		}()
 
 		err = params.Decode(paramsF)
 		if err != nil {
@@ -213,5 +221,7 @@ func Resolve(cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCall
 		}
 	}
 
-	return r.Resolve(*params, filepath.Dir(paramsPath), ifc)
+	cmds, err := r.Resolve(name, *params, filepath.Dir(paramsPath), ifc)
+
+	return r, cmds, err
 }
