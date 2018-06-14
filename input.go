@@ -273,9 +273,6 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 // requirements.
 func (input *Input) Resolve(params Parameters, reqs Requirements) error {
 	if provided, ok := params[input.ID]; ok {
-		// *** we know what type this is supposed to be, eg. a File. If not a
-		// file, but the output definition of a parent step, then we need to
-		// resolve that to that parent's output file now...
 		input.Provided = provided
 	}
 
