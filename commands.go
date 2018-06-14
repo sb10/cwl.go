@@ -436,6 +436,7 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, error) {
 }
 
 func trimExpression(e string) string {
+	e = strings.TrimSpace(e)
 	if strings.HasPrefix(e, "$(") {
 		e = strings.TrimPrefix(e, "$(")
 		e = strings.TrimSuffix(e, ")")
@@ -461,6 +462,11 @@ func evaluateExpression(e string, vm *otto.Otto) (string, float64, *otto.Object,
 				// might be just a bare object, try again by assigning to a
 				// variable
 				e = "$cwlgoreturnval = " + e
+				value, err = vm.Run(e)
+			} else if strings.Contains(err.Error(), "Illegal return statement") && strings.HasPrefix(e, "return") {
+				// might be returning an object, try again by assigning to a
+				// variable instead of return
+				e = "$cwlgoreturnval = " + strings.TrimPrefix(e, "return")
 				value, err = vm.Run(e)
 			}
 			if err != nil {
