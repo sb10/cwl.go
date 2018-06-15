@@ -361,7 +361,22 @@ func (c *Command) Execute() (interface{}, error) {
 		}
 		out[o.ID] = result
 	}
-	c.OutputContext[c.UniqueID] = out
+	if existing, exists := c.OutputContext[c.UniqueID]; exists {
+		for key, val := range out {
+			if current, exists := existing[key]; exists {
+				if arr, ok := current.([]interface{}); ok {
+					arr = append(arr, val)
+					existing[key] = arr
+				} else {
+					existing[key] = []interface{}{current, val}
+				}
+			} else {
+				existing[key] = val
+			}
+		}
+	} else {
+		c.OutputContext[c.UniqueID] = out
+	}
 	return out, err
 }
 
@@ -373,7 +388,7 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, error) {
 	underscore.Disable()
 	for _, req := range c.Workflow.Requirements {
 		switch req.Class {
-		case "InlineJavascriptRequirement":
+		case reqJS:
 			for _, jse := range req.ExpressionLib {
 				if jse.Kind == "$include" {
 					if jse.Value == "underscore.js" {

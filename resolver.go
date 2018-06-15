@@ -175,54 +175,80 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 			return nil, fmt.Errorf("no steps specified in workflow")
 		}
 
+		scatter := r.Workflow.Requirements.DoScatter()
+
 		stepOuts := make(map[string]map[string]bool)
 		for _, step := range r.Workflow.Steps {
-			var subR *Resolver
-			var subErr error
-			if step.Run.Workflow == nil {
-				if step.Run.Value == "" {
-					return nil, fmt.Errorf("nothing to do for step %s", step.ID)
-				}
-				cwlPath := filepath.Join(r.CWLDir, step.Run.Value)
-
-				cwlF, erro := os.Open(cwlPath)
-				if erro != nil {
-					return nil, erro
-				}
-				defer func() {
-					err = cwlF.Close()
-				}()
-
-				root := NewCWL()
-				err = root.Decode(cwlF)
-				if err != nil {
-					return nil, err
-				}
-
-				subR, subErr = NewResolver(root, r.Config, filepath.Dir(cwlPath), r.OutputContext)
-			} else {
-				subR, subErr = NewResolver(step.Run.Workflow, r.Config, r.CWLDir, r.OutputContext)
-			}
-			if subErr != nil {
-				return nil, subErr
-			}
-
 			stepParams := r.resolveStepParams(step.In, stepOuts)
 
 			r.resolveStepOuts(step.ID, stepOuts, step.Out)
 
-			subCmds, errr := subR.Resolve(name+"/"+step.ID, stepParams, paramsDir, ifc)
-			if errr != nil {
-				return nil, errr
-			}
-			for _, c := range subCmds {
-				if c.Workflow.ID == "" {
-					c.Workflow.ID = step.ID
-				} else {
-					c.Workflow.ID = step.ID + "/" + c.Workflow.ID
+			var sps []Parameters
+			if scatter {
+				for _, fkey := range step.Scatter {
+					if param, exists := stepParams[fkey]; exists {
+						if files, ok := param.([]interface{}); ok {
+							for _, file := range files {
+								theseParams := *NewParameters()
+								for k, v := range stepParams {
+									theseParams[k] = v
+								}
+								theseParams[fkey] = file
+								sps = append(sps, theseParams)
+							}
+						} else {
+							return nil, fmt.Errorf("request to scatter over non-array for %s", fkey)
+						}
+					}
 				}
+			} else {
+				sps = []Parameters{stepParams}
 			}
-			cmds = append(cmds, subCmds...)
+
+			for _, sp := range sps {
+				var subR *Resolver
+				var subErr error
+				if step.Run.Workflow == nil {
+					if step.Run.Value == "" {
+						return nil, fmt.Errorf("nothing to do for step %s", step.ID)
+					}
+					cwlPath := filepath.Join(r.CWLDir, step.Run.Value)
+
+					cwlF, erro := os.Open(cwlPath)
+					if erro != nil {
+						return nil, erro
+					}
+					defer func() {
+						err = cwlF.Close()
+					}()
+
+					root := NewCWL()
+					err = root.Decode(cwlF)
+					if err != nil {
+						return nil, err
+					}
+
+					subR, subErr = NewResolver(root, r.Config, filepath.Dir(cwlPath), r.OutputContext)
+				} else {
+					subR, subErr = NewResolver(step.Run.Workflow, r.Config, r.CWLDir, r.OutputContext)
+				}
+				if subErr != nil {
+					return nil, subErr
+				}
+
+				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc)
+				if errr != nil {
+					return nil, errr
+				}
+				for _, c := range subCmds {
+					if c.Workflow.ID == "" {
+						c.Workflow.ID = step.ID
+					} else {
+						c.Workflow.ID = step.ID + "/" + c.Workflow.ID
+					}
+				}
+				cmds = append(cmds, subCmds...)
+			}
 		}
 	}
 
@@ -234,7 +260,6 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 func (r *Resolver) Output() interface{} {
 	out := make(map[string]interface{})
 	for _, o := range r.Workflow.Outputs {
-		//fmt.Printf("got out %+v\nvs current outputcontext: %+v\n", o, r.OutputContext)
 		if len(o.Source) == 1 && o.Source[0] != "" {
 			parts := strings.Split(o.Source[0], "/")
 			if len(parts) == 2 {

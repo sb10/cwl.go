@@ -112,3 +112,9 @@ const (
 	classCommand    = "CommandLineTool"
 	classExpression = "ExpressionTool"
 )
+
+// requirements
+const (
+	reqScatter = "ScatterFeatureRequirement"
+	reqJS      = "InlineJavascriptRequirement"
+)

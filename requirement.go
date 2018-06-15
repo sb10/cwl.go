@@ -160,3 +160,13 @@ func (r Requirements) New(i interface{}) Requirements {
 	}
 	return dest
 }
+
+// DoScatter tells you if there is a ScatterFeatureRequirement.
+func (r Requirements) DoScatter() bool {
+	for _, req := range r {
+		if req.Class == reqScatter {
+			return true
+		}
+	}
+	return false
+}
