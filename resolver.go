@@ -177,6 +177,25 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 
 		scatter, multiple := r.Workflow.Requirements.DoScatterOrMultiple()
 
+		// fill in missing params from workflow input defaults
+		for _, in := range r.Workflow.Inputs {
+			if _, exists := r.Parameters[in.ID]; !exists {
+				if in.Default != nil {
+					if thing, ok := in.Default.Self.(map[string]interface{}); ok && thing[fieldClass] == typeFile {
+						// convert to a map[interface{}]interface{} so that
+						// we later interpret this as a File
+						file := make(map[interface{}]interface{})
+						for k, v := range thing {
+							file[k] = v
+						}
+						r.Parameters[in.ID] = file
+					} else {
+						r.Parameters[in.ID] = in.Default.Self
+					}
+				}
+			}
+		}
+
 		stepOuts := make(map[string]map[string]bool)
 		for _, step := range r.Workflow.Steps {
 			stepParams := r.resolveStepParams(step.In, multiple, stepOuts)
