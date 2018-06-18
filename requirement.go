@@ -161,12 +161,18 @@ func (r Requirements) New(i interface{}) Requirements {
 	return dest
 }
 
-// DoScatter tells you if there is a ScatterFeatureRequirement.
-func (r Requirements) DoScatter() bool {
+// DoScatterOrMultiple tells you if there is a ScatterFeatureRequirement and if
+// there is a MultipleInputFeatureRequirement.
+func (r Requirements) DoScatterOrMultiple() (doScatter bool, doMultiple bool) {
 	for _, req := range r {
 		if req.Class == reqScatter {
-			return true
+			doScatter = true
+		} else if req.Class == reqMultiple {
+			doMultiple = true
+		}
+		if doScatter && doMultiple {
+			break
 		}
 	}
-	return false
+	return doScatter, doMultiple
 }

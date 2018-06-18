@@ -115,6 +115,7 @@ const (
 
 // requirements
 const (
-	reqScatter = "ScatterFeatureRequirement"
-	reqJS      = "InlineJavascriptRequirement"
+	reqJS       = "InlineJavascriptRequirement"
+	reqScatter  = "ScatterFeatureRequirement"
+	reqMultiple = "MultipleInputFeatureRequirement"
 )

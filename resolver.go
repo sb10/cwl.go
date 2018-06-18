@@ -175,11 +175,11 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 			return nil, fmt.Errorf("no steps specified in workflow")
 		}
 
-		scatter := r.Workflow.Requirements.DoScatter()
+		scatter, multiple := r.Workflow.Requirements.DoScatterOrMultiple()
 
 		stepOuts := make(map[string]map[string]bool)
 		for _, step := range r.Workflow.Steps {
-			stepParams := r.resolveStepParams(step.In, stepOuts)
+			stepParams := r.resolveStepParams(step.In, multiple, stepOuts)
 
 			r.resolveStepOuts(step.ID, stepOuts, step.Out)
 
@@ -288,12 +288,21 @@ func (r *Resolver) Output() interface{} {
 // resolveStepParams compares the given step inputs to the stored user
 // parameters and other step outputs and sets values as appropriate in the
 // returned Parameters.
-func (r *Resolver) resolveStepParams(ins StepInputs, outs map[string]map[string]bool) Parameters {
+func (r *Resolver) resolveStepParams(ins StepInputs, multiple bool, outs map[string]map[string]bool) Parameters {
 	stepParams := *NewParameters()
 	for _, in := range ins {
 		for _, source := range in.Source {
 			if val, exists := r.Parameters[source]; exists {
-				stepParams[in.ID] = val
+				if current, exists := stepParams[in.ID]; exists && multiple {
+					if arr, ok := current.([]interface{}); ok {
+						arr = append(arr, val)
+						stepParams[in.ID] = arr
+					} else {
+						stepParams[in.ID] = []interface{}{current, val}
+					}
+				} else {
+					stepParams[in.ID] = val
+				}
 				continue
 			}
 
