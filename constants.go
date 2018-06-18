@@ -116,6 +116,9 @@ const (
 
 // requirements
 const (
+	reqShell    = "ShellCommandRequirement"
+	reqWorkDir  = "InitialWorkDirRequirement"
+	reqEnv      = "EnvVarRequirement"
 	reqJS       = "InlineJavascriptRequirement"
 	reqScatter  = "ScatterFeatureRequirement"
 	reqMultiple = "MultipleInputFeatureRequirement"

@@ -121,7 +121,7 @@ func (c *Command) Execute() (interface{}, error) {
 	}
 
 	// resolve requirments
-	vm, viaShell, err := c.resolveRequirments()
+	vm, viaShell, reqEnv, err := c.resolveRequirments()
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve requirements: %s", err)
 	}
@@ -261,6 +261,10 @@ func (c *Command) Execute() (interface{}, error) {
 	cmd.Dir = c.Config.OutputDir
 	cmd.Env = append(c.Config.Env, "HOME="+c.Config.OutputDir, "TMPDIR="+c.Config.TmpDirPrefix, "PATH="+os.Getenv("PATH")) // *** no PATH in container
 
+	if len(reqEnv) > 0 {
+		cmd.Env = append(cmd.Env, reqEnv...)
+	}
+
 	// handle stdout redirects
 	var outFile *os.File
 	if stdOutPath == "" && c.Workflow.Outputs[0].Types[0].Type == fieldStdOut {
@@ -382,8 +386,10 @@ func (c *Command) Execute() (interface{}, error) {
 
 // resolveRequirments handles things like InlineJavascriptRequirement, creates
 // files specified in InitialWorkDirRequirement, and returns a javascript vm for
-// resolving expressions, and a bool to say if command should be run via shell.
-func (c *Command) resolveRequirments() (*otto.Otto, bool, error) {
+// resolving expressions, a bool to say if command should be run via shell, and
+// any environment variables that the command should run with (in os.Environ()
+// format).
+func (c *Command) resolveRequirments() (*otto.Otto, bool, []string, error) {
 	// set up our javascript interpreter, first dealing with imports
 	underscore.Disable()
 	for _, req := range c.Workflow.Requirements {
@@ -404,7 +410,7 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, error) {
 	// set up namespace context
 	err := vm.Set("inputs", c.InputContext)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	err = vm.Set("runtime", map[string]string{
 		"outdir": c.Config.OutputDir,
@@ -413,41 +419,50 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, error) {
 		"ram":    c.Config.RuntimeValue("runtime.ram"),
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 
 	viaShell := false
+	var env []string
 	for _, req := range c.Workflow.Requirements {
 		switch req.Class {
-		case "ShellCommandRequirement":
+		case reqShell:
 			viaShell = true
-		case "InlineJavascriptRequirement":
+		case reqJS:
 			// parse expressions
 			for _, jse := range req.ExpressionLib {
 				if jse.Kind == "$execute" {
 					_, err := vm.Run(jse.Value)
 					if err != nil {
-						return vm, viaShell, err
+						return vm, viaShell, env, err
 					}
 				}
 			}
-		case "InitialWorkDirRequirement":
+		case reqWorkDir:
 			for _, entry := range req.Listing {
 				basename := entry.EntryName
 				e := entry.Entry
 				contents, _, _, err := evaluateExpression(e, vm)
 				if err != nil {
-					return vm, viaShell, err
+					return vm, viaShell, env, err
 				}
 
 				err = ioutil.WriteFile(filepath.Join(c.Config.OutputDir, basename), []byte(contents), 0600)
 				if err != nil {
-					return vm, viaShell, err
+					return vm, viaShell, env, err
 				}
+			}
+		case reqEnv:
+			for _, ed := range req.EnvDef {
+				val, _, _, err := evaluateExpression(ed.Value, vm)
+				if err != nil {
+					return vm, viaShell, env, err
+				}
+				env = append(env, fmt.Sprintf("%s=%s", ed.Name, val))
 			}
 		}
 	}
-	return vm, viaShell, nil
+	return vm, viaShell, env, nil
 }
 
 func trimExpression(e string) string {
