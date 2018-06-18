@@ -120,3 +120,8 @@ const (
 	reqScatter  = "ScatterFeatureRequirement"
 	reqMultiple = "MultipleInputFeatureRequirement"
 )
+
+// merges
+const (
+	mergeFlattened = "merge_flattened"
+)

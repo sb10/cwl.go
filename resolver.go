@@ -292,19 +292,29 @@ func (r *Resolver) resolveStepParams(ins StepInputs, multiple bool, outs map[str
 	stepParams := *NewParameters()
 	createdSlice := make(map[string]bool)
 	for _, in := range ins {
+		flatten := in.LinkMerge == mergeFlattened
 		for _, source := range in.Source {
-			if val, exists := r.Parameters[source]; exists {
-				if current, exists := stepParams[in.ID]; exists && multiple {
-					if createdSlice[in.ID] {
-						arr := stepParams[in.ID].([]interface{})
-						arr = append(arr, val)
-						stepParams[in.ID] = arr
-					} else {
-						stepParams[in.ID] = []interface{}{current, val}
-						createdSlice[in.ID] = true
-					}
+			if found, exists := r.Parameters[source]; exists {
+				var vals []interface{}
+				if arr, ok := found.([]interface{}); ok && flatten {
+					vals = arr
 				} else {
-					stepParams[in.ID] = val
+					vals = append(vals, found)
+				}
+
+				for _, val := range vals {
+					if current, exists := stepParams[in.ID]; exists && multiple {
+						if createdSlice[in.ID] {
+							arr := stepParams[in.ID].([]interface{})
+							arr = append(arr, val)
+							stepParams[in.ID] = arr
+						} else {
+							stepParams[in.ID] = []interface{}{current, val}
+							createdSlice[in.ID] = true
+						}
+					} else {
+						stepParams[in.ID] = val
+					}
 				}
 				continue
 			}
