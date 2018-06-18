@@ -290,15 +290,18 @@ func (r *Resolver) Output() interface{} {
 // returned Parameters.
 func (r *Resolver) resolveStepParams(ins StepInputs, multiple bool, outs map[string]map[string]bool) Parameters {
 	stepParams := *NewParameters()
+	createdSlice := make(map[string]bool)
 	for _, in := range ins {
 		for _, source := range in.Source {
 			if val, exists := r.Parameters[source]; exists {
 				if current, exists := stepParams[in.ID]; exists && multiple {
-					if arr, ok := current.([]interface{}); ok {
+					if createdSlice[in.ID] {
+						arr := stepParams[in.ID].([]interface{})
 						arr = append(arr, val)
 						stepParams[in.ID] = arr
 					} else {
 						stepParams[in.ID] = []interface{}{current, val}
+						createdSlice[in.ID] = true
 					}
 				} else {
 					stepParams[in.ID] = val

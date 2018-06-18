@@ -473,15 +473,9 @@ func evaluateExpression(e string, vm *otto.Otto) (string, float64, *otto.Object,
 		// evaluate as javascript
 		value, err := vm.Run(e)
 		if err != nil {
-			if strings.Contains(err.Error(), "Unexpected token :") {
-				// might be just a bare object, try again by assigning to a
-				// variable
-				e = "$cwlgoreturnval = " + e
-				value, err = vm.Run(e)
-			} else if strings.Contains(err.Error(), "Illegal return statement") && strings.HasPrefix(e, "return") {
-				// might be returning an object, try again by assigning to a
-				// variable instead of return
-				e = "$cwlgoreturnval = " + strings.TrimPrefix(e, "return")
+			if strings.Contains(err.Error(), "Unexpected token :") || strings.Contains(err.Error(), "Illegal return statement") {
+				// might be returning something, wrap in a function
+				e = "function cwlgoreturnfunc() { " + e + " }; cwlgoreturnfunc()"
 				value, err = vm.Run(e)
 			}
 			if err != nil {

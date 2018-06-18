@@ -247,21 +247,38 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 		case "int":
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
 		case typeFile:
-			switch provided := input.Provided.(type) {
-			case map[interface{}]interface{}:
+			if file, ok := input.Provided.(map[interface{}]interface{}); ok {
 				// TODO: more strict type casting
-				path, err := resolvePath(fmt.Sprintf("%v", provided["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+				path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
 				if err != nil {
 					return nil, err
 				}
 				flattened = append(flattened, path)
-			default:
+			} else {
+				return nil, fmt.Errorf("expected a File, got %+v", input.Provided)
+			}
+		case typeFileSlice:
+			if slice, ok := input.Provided.([]interface{}); ok {
+				for _, maybeFile := range slice {
+					if file, ok := maybeFile.(map[interface{}]interface{}); ok {
+						path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+						if err != nil {
+							return nil, err
+						}
+						flattened = append(flattened, path)
+					} else {
+						return nil, fmt.Errorf("expected a File within the File[], got %+v", maybeFile)
+					}
+				}
+			} else {
+				return nil, fmt.Errorf("expected a File[], got %+v", input.Provided)
 			}
 		default:
 			inputContext[input.ID] = input.Provided
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided))
 		}
 	}
+
 	if input.Binding != nil && input.Binding.Prefix != "" {
 		flattened = append([]string{input.Binding.Prefix}, flattened...)
 	}
