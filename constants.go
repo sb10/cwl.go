@@ -101,7 +101,7 @@ const (
 	// typeLong      = "long"
 	// typeFloat     = "float"
 	// typeDouble    = "double"
-	// typeString    = "string"
+	typeString    = "string"
 	typeFile      = "File"
 	typeFileSlice = "File[]"
 	// typeDirectory = "directory"

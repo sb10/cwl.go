@@ -66,7 +66,7 @@ func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (int
 	if repr := o.Types[0]; len(o.Types) == 1 {
 		t = repr.Type
 		switch repr.Type {
-		case typeFile, typeInt:
+		case typeFile, typeInt, typeString:
 			paths, err := globPaths(o.Binding, dir)
 			if err != nil {
 				return nil, err
