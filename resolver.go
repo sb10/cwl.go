@@ -202,26 +202,9 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 
 			r.resolveStepOuts(step.ID, stepOuts, step.Out)
 
-			var sps []Parameters
-			if scatter {
-				for _, fkey := range step.Scatter {
-					if param, exists := stepParams[fkey]; exists {
-						if files, ok := param.([]interface{}); ok {
-							for _, file := range files {
-								theseParams := *NewParameters()
-								for k, v := range stepParams {
-									theseParams[k] = v
-								}
-								theseParams[fkey] = file
-								sps = append(sps, theseParams)
-							}
-						} else {
-							return nil, fmt.Errorf("request to scatter over non-array for %s", fkey)
-						}
-					}
-				}
-			} else {
-				sps = []Parameters{stepParams}
+			sps, errs := r.handleScatter(scatter, step, stepParams)
+			if errs != nil {
+				return nil, errs
 			}
 
 			for _, sp := range sps {
@@ -242,9 +225,9 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 					}()
 
 					root := NewCWL()
-					err = root.Decode(cwlF)
-					if err != nil {
-						return nil, err
+					errd := root.Decode(cwlF)
+					if errd != nil {
+						return nil, errd
 					}
 
 					subR, subErr = NewResolver(root, r.Config, filepath.Dir(cwlPath), r.OutputContext)
@@ -350,6 +333,90 @@ func (r *Resolver) resolveStepParams(ins StepInputs, multiple bool, outs map[str
 		}
 	}
 	return stepParams
+}
+
+// handleScatter creates a new Parameters for each scatter that is a copy of
+// the input Parameters, altered for the particular input.
+func (r *Resolver) handleScatter(scatter bool, step Step, stepParams Parameters) ([]Parameters, error) {
+	var sps []Parameters
+	if scatter {
+		if len(step.Scatter) == 1 {
+			fkey := step.Scatter[0]
+			if param, exists := stepParams[fkey]; exists {
+				if files, ok := param.([]interface{}); ok {
+					for _, file := range files {
+						theseParams := *NewParameters()
+						for k, v := range stepParams {
+							theseParams[k] = v
+						}
+						theseParams[fkey] = file
+						sps = append(sps, theseParams)
+					}
+				} else {
+					return nil, fmt.Errorf("request to scatter over non-array for %s", fkey)
+				}
+			}
+		} else {
+			scatterKeys := make(map[string]bool)
+			for _, fkey := range step.Scatter {
+				scatterKeys[fkey] = true
+			}
+			numScatter := len(step.Scatter)
+
+			switch step.ScatterMethod {
+			case scatterNestedCrossProduct, scatterFlatCrossProduct:
+				scatterIndex := 0
+				for i, iKey := range step.Scatter {
+					if iParam, exists := stepParams[iKey]; exists {
+						for j := i + 1; j < numScatter; j++ {
+							jKey := step.Scatter[j]
+							if jParam, exists := stepParams[jKey]; exists {
+								iFiles, ok := iParam.([]interface{})
+								if !ok {
+									return nil, fmt.Errorf("request to scatter over non-array for %s", iKey)
+								}
+								jFiles, ok := jParam.([]interface{})
+								if !ok {
+									return nil, fmt.Errorf("request to scatter over non-array for %s", jKey)
+								}
+
+								for fi, iFile := range iFiles {
+									for ji, jFile := range jFiles {
+										// make some new params, copying non-scatter keys
+										theseParams := *NewParameters()
+										for k, v := range stepParams {
+											if !scatterKeys[k] {
+												theseParams[k] = v
+											}
+										}
+
+										theseParams[iKey] = iFile
+										theseParams[jKey] = jFile
+
+										switch step.ScatterMethod {
+										case scatterNestedCrossProduct:
+											theseParams[scatterNestedInput] = [2]int{fi, ji}
+										case scatterFlatCrossProduct:
+											theseParams[scatterFlatInput] = scatterIndex
+											scatterIndex++
+										}
+
+										sps = append(sps, theseParams)
+									}
+								}
+							}
+						}
+					}
+				}
+			case scatterDotProduct:
+				return nil, fmt.Errorf("request to scatter using dotproduct not yet implemented")
+			}
+		}
+	} else {
+		sps = []Parameters{stepParams}
+	}
+
+	return sps, nil
 }
 
 // resolveStepOuts fills out the given outs map with the give step outputs

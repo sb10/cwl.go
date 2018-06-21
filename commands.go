@@ -78,7 +78,6 @@ func (c *Command) Execute() (interface{}, error) {
 
 	// resolve input that comes from prior step outputs
 	for key, val := range c.OutputContext {
-		//parent := filepath.Dir(key)
 		child := filepath.Base(key)
 
 		for pkey, pval := range c.Parameters {
@@ -102,6 +101,20 @@ func (c *Command) Execute() (interface{}, error) {
 	}
 
 	// resolve inputs
+	var nestedOutIndexFound bool
+	var nestedOutIndex [2]int
+	if val, exists := c.Parameters[scatterNestedInput]; exists {
+		nestedOutIndex = val.([2]int)
+		nestedOutIndexFound = true
+		delete(c.Parameters, scatterNestedInput)
+	}
+	var flatOutIndexFound bool
+	var flatOutIndex int
+	if val, exists := c.Parameters[scatterFlatInput]; exists {
+		flatOutIndex = val.(int)
+		flatOutIndexFound = true
+		delete(c.Parameters, scatterFlatInput)
+	}
 	priors, inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.IFC, c.InputContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve required inputs: %v", err)
@@ -363,16 +376,34 @@ func (c *Command) Execute() (interface{}, error) {
 		if errr != nil {
 			return nil, errr
 		}
-		out[o.ID] = result
+
+		if nestedOutIndexFound {
+			sliceResult := make([]interface{}, nestedOutIndex[0]+1)
+			nestedResult := make([]interface{}, nestedOutIndex[1]+1)
+			nestedResult[nestedOutIndex[1]] = result
+			sliceResult[nestedOutIndex[0]] = nestedResult
+			out[o.ID] = sliceResult
+		} else if flatOutIndexFound {
+			var sliceResult []interface{}
+			sliceResult[flatOutIndex] = result
+			out[o.ID] = sliceResult
+		} else {
+			out[o.ID] = result
+		}
 	}
+
 	if existing, exists := c.OutputContext[c.UniqueID]; exists {
 		for key, val := range out {
 			if current, exists := existing[key]; exists {
-				if arr, ok := current.([]interface{}); ok {
-					arr = append(arr, val)
-					existing[key] = arr
+				if nestedOutIndexFound || flatOutIndexFound {
+					existing[key] = mergeSlices(current, val)
 				} else {
-					existing[key] = []interface{}{current, val}
+					if arr, ok := current.([]interface{}); ok {
+						arr = append(arr, val)
+						existing[key] = arr
+					} else {
+						existing[key] = []interface{}{current, val}
+					}
 				}
 			} else {
 				existing[key] = val
@@ -381,6 +412,7 @@ func (c *Command) Execute() (interface{}, error) {
 	} else {
 		c.OutputContext[c.UniqueID] = out
 	}
+
 	return out, err
 }
 
@@ -521,6 +553,42 @@ func evaluateExpression(e string, vm *otto.Otto) (string, float64, *otto.Object,
 		}
 	}
 	return e, fl, nil, nil
+}
+
+// mergeSlices returns a new slice with values at each index taken from the
+// input slice that had a non-nil value at that index.
+func mergeSlices(ai, bi interface{}) []interface{} {
+	a := ai.([]interface{})
+	b := bi.([]interface{})
+	l := len(a)
+	if len(b) > l {
+		l = len(b)
+	}
+
+	merged := make([]interface{}, l)
+	for i := 0; i < l; i++ {
+		var valA, valB interface{}
+		if i < len(a) {
+			valA = a[i]
+		}
+		if i < len(b) {
+			valB = b[i]
+		}
+		if valA == nil && valB == nil {
+			continue
+		}
+
+		if valA != nil && valB != nil {
+			// should only happen if both are nested slices
+			merged[i] = mergeSlices(valA, valB)
+		} else if valA != nil {
+			merged[i] = valA
+		} else {
+			merged[i] = valB
+		}
+	}
+
+	return merged
 }
 
 // Commands is a slice of Command.

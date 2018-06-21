@@ -128,3 +128,12 @@ const (
 const (
 	mergeFlattened = "merge_flattened"
 )
+
+// scatter methods
+const (
+	scatterDotProduct         = "dotproduct"
+	scatterNestedCrossProduct = "nested_crossproduct"
+	scatterFlatCrossProduct   = "flat_crossproduct"
+	scatterNestedInput        = "_!_scatter_nested_input_!_"
+	scatterFlatInput          = "_!_scatter_flat_input_!_"
+)
