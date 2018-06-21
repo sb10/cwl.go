@@ -410,53 +410,52 @@ func (r *Resolver) handleScatter(scatter bool, step Step, stepParams Parameters)
 			}
 			numScatter := len(step.Scatter)
 
-			switch step.ScatterMethod {
-			case scatterNestedCrossProduct, scatterFlatCrossProduct:
-				scatterIndex := 0
-				for i, iKey := range step.Scatter {
-					if iParam, exists := stepParams[iKey]; exists {
-						for j := i + 1; j < numScatter; j++ {
-							jKey := step.Scatter[j]
-							if jParam, exists := stepParams[jKey]; exists {
-								iFiles, ok := iParam.([]interface{})
-								if !ok {
-									return nil, fmt.Errorf("request to scatter over non-array for %s", iKey)
-								}
-								jFiles, ok := jParam.([]interface{})
-								if !ok {
-									return nil, fmt.Errorf("request to scatter over non-array for %s", jKey)
-								}
+			scatterIndex := 0
+			for i, iKey := range step.Scatter {
+				if iParam, exists := stepParams[iKey]; exists {
+					for j := i + 1; j < numScatter; j++ {
+						jKey := step.Scatter[j]
+						if jParam, exists := stepParams[jKey]; exists {
+							iFiles, ok := iParam.([]interface{})
+							if !ok {
+								return nil, fmt.Errorf("request to scatter over non-array for %s", iKey)
+							}
+							jFiles, ok := jParam.([]interface{})
+							if !ok {
+								return nil, fmt.Errorf("request to scatter over non-array for %s", jKey)
+							}
 
-								for fi, iFile := range iFiles {
-									for ji, jFile := range jFiles {
-										// make some new params, copying non-scatter keys
-										theseParams := *NewParameters()
-										for k, v := range stepParams {
-											if !scatterKeys[k] {
-												theseParams[k] = v
-											}
-										}
-
-										theseParams[iKey] = iFile
-										theseParams[jKey] = jFile
-
-										switch step.ScatterMethod {
-										case scatterNestedCrossProduct:
-											theseParams[scatterNestedInput] = [2]int{fi, ji}
-										case scatterFlatCrossProduct:
-											theseParams[scatterFlatInput] = scatterIndex
-											scatterIndex++
-										}
-
-										sps = append(sps, theseParams)
+							for fi, iFile := range iFiles {
+								for ji, jFile := range jFiles {
+									if step.ScatterMethod == scatterDotProduct && ji != fi {
+										continue
 									}
+
+									// make some new params, copying non-scatter keys
+									theseParams := *NewParameters()
+									for k, v := range stepParams {
+										if !scatterKeys[k] {
+											theseParams[k] = v
+										}
+									}
+
+									theseParams[iKey] = iFile
+									theseParams[jKey] = jFile
+
+									switch step.ScatterMethod {
+									case scatterNestedCrossProduct:
+										theseParams[scatterNestedInput] = [2]int{fi, ji}
+									case scatterFlatCrossProduct, scatterDotProduct:
+										theseParams[scatterFlatInput] = scatterIndex
+										scatterIndex++
+									}
+
+									sps = append(sps, theseParams)
 								}
 							}
 						}
 					}
 				}
-			case scatterDotProduct:
-				return nil, fmt.Errorf("request to scatter using dotproduct not yet implemented")
 			}
 		}
 	} else {

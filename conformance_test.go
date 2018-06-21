@@ -66,7 +66,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 32 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 33 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		if *conTestNum != 0 {
 			done++
