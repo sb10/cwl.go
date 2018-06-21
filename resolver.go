@@ -108,17 +108,18 @@ func (r ResolveConfig) RuntimeValue(key string) string {
 
 // Resolver is a high-level struct with the logic for interpreting CWL.
 type Resolver struct {
-	Name          string
-	Workflow      *Root
-	Parameters    Parameters
-	Outdir        string
-	Quiet         bool
-	Config        ResolveConfig
-	CWLDir        string
-	ParamsDir     string
-	IFC           InputFileCallback
-	InputContext  map[string]interface{}
-	OutputContext map[string]map[string]interface{}
+	Name           string
+	Workflow       *Root
+	Parameters     Parameters
+	Outdir         string
+	Quiet          bool
+	Config         ResolveConfig
+	CWLDir         string
+	ParamsDir      string
+	IFC            InputFileCallback
+	InputContext   map[string]interface{}
+	OutputContext  map[string]map[string]interface{}
+	outputWorkflow *Root
 }
 
 // NewResolver creates a new Resolver struct for the given pre-decoded Root. The
@@ -155,7 +156,12 @@ func NewResolver(root *Root, config ResolveConfig, cwlDir string, optionalOutput
 // If resolving a Workflow, you must be sure to Execute() all of the returned
 // Commands in the appropriate order, and then call Output() on this to get the
 // final output value.
-func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc InputFileCallback) (Commands, error) {
+//
+// For CWL files that are graphs, graphNode should be set to the node id of the
+// workflow you wish to resolve. Otherwise it can be supplied as a blank string.
+// The nodes value would not normally be supplied by you, and should be supplied
+// as nil.
+func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc InputFileCallback, graphNode string, nodes map[string]*Root) (Commands, error) {
 	r.Name = name
 	r.Parameters = params
 	r.ParamsDir = paramsDir
@@ -214,23 +220,37 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 					if step.Run.Value == "" {
 						return nil, fmt.Errorf("nothing to do for step %s", step.ID)
 					}
-					cwlPath := filepath.Join(r.CWLDir, step.Run.Value)
 
-					cwlF, erro := os.Open(cwlPath)
-					if erro != nil {
-						return nil, erro
+					var root *Root
+					var cwlDir string
+					if strings.HasPrefix(step.Run.Value, "#") {
+						nodeID := strings.TrimPrefix(step.Run.Value, "#")
+						root = nodes[nodeID]
+						if root == nil {
+							return nil, fmt.Errorf("graph node [%s] not found", nodeID)
+						}
+						cwlDir = r.CWLDir
+					} else {
+						cwlPath := filepath.Join(r.CWLDir, step.Run.Value)
+
+						cwlF, erro := os.Open(cwlPath)
+						if erro != nil {
+							return nil, erro
+						}
+						defer func() {
+							err = cwlF.Close()
+						}()
+
+						root = NewCWL()
+						errd := root.Decode(cwlF)
+						if errd != nil {
+							return nil, errd
+						}
+
+						cwlDir = filepath.Dir(cwlPath)
 					}
-					defer func() {
-						err = cwlF.Close()
-					}()
 
-					root := NewCWL()
-					errd := root.Decode(cwlF)
-					if errd != nil {
-						return nil, errd
-					}
-
-					subR, subErr = NewResolver(root, r.Config, filepath.Dir(cwlPath), r.OutputContext)
+					subR, subErr = NewResolver(root, r.Config, cwlDir, r.OutputContext)
 				} else {
 					subR, subErr = NewResolver(step.Run.Workflow, r.Config, r.CWLDir, r.OutputContext)
 				}
@@ -238,7 +258,7 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 					return nil, subErr
 				}
 
-				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc)
+				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc, "", nodes)
 				if errr != nil {
 					return nil, errr
 				}
@@ -252,6 +272,29 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 				cmds = append(cmds, subCmds...)
 			}
 		}
+	case "":
+		// must be a $graph
+		if len(r.Workflow.Graphs) == 0 || graphNode == "" {
+			return nil, fmt.Errorf("nothing specified to do")
+		}
+
+		nodes := make(map[string]*Root)
+		for _, graph := range r.Workflow.Graphs {
+			nodes[graph.ID] = graph
+		}
+
+		wf := nodes[graphNode]
+		if wf == nil {
+			return nil, fmt.Errorf("node [%s] not found in $graph", graphNode)
+		}
+		r.outputWorkflow = wf
+
+		subR, subErr := NewResolver(wf, r.Config, r.CWLDir, r.OutputContext)
+		if subErr != nil {
+			return nil, subErr
+		}
+
+		return subR.Resolve(name, params, paramsDir, ifc, "", nodes)
 	}
 
 	return cmds, err
@@ -261,7 +304,11 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 // Execute()ing all the Commands returned by Resolve().
 func (r *Resolver) Output() interface{} {
 	out := make(map[string]interface{})
-	for _, o := range r.Workflow.Outputs {
+	wf := r.outputWorkflow
+	if wf == nil {
+		wf = r.Workflow
+	}
+	for _, o := range wf.Outputs {
 		if len(o.Source) == 1 && o.Source[0] != "" {
 			parts := strings.Split(o.Source[0], "/")
 			if len(parts) == 2 {

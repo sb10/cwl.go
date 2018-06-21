@@ -384,7 +384,7 @@ func (c *Command) Execute() (interface{}, error) {
 			sliceResult[nestedOutIndex[0]] = nestedResult
 			out[o.ID] = sliceResult
 		} else if flatOutIndexFound {
-			var sliceResult []interface{}
+			sliceResult := make([]interface{}, flatOutIndex+1)
 			sliceResult[flatOutIndex] = result
 			out[o.ID] = sliceResult
 		} else {

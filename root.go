@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/otiai10/yaml2json"
 )
@@ -170,12 +171,21 @@ func (root *Root) AsStep(i interface{}) *Root {
 //
 // name should uniquely identify this combination of CWL and parameters.
 //
+// For CWL files that are $graphs, cwlPath can be suffixed with #[id] to select
+// which node of the graph to resolve.
+//
 // To actually run the commands you can Execute() each of them in the right
 // order.
 //
 // A Resolver is returned, on which you can call Output() to get the final
 // output after Execute()ing all the commands.
 func Resolve(name string, cwlPath, paramsPath string, config ResolveConfig, ifc InputFileCallback) (*Resolver, Commands, error) {
+	var graphNode string
+	parts := strings.Split(cwlPath, "#")
+	if len(parts) == 2 {
+		cwlPath = parts[0]
+		graphNode = parts[1]
+	}
 	cwlPath, err := filepath.Abs(cwlPath)
 	if err != nil {
 		return nil, nil, err
@@ -221,7 +231,7 @@ func Resolve(name string, cwlPath, paramsPath string, config ResolveConfig, ifc 
 		}
 	}
 
-	cmds, err := r.Resolve(name, *params, filepath.Dir(paramsPath), ifc)
+	cmds, err := r.Resolve(name, *params, filepath.Dir(paramsPath), ifc, graphNode, nil)
 
 	return r, cmds, err
 }
