@@ -66,7 +66,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 33 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 34 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		if *conTestNum != 0 {
 			done++
@@ -114,8 +114,6 @@ func TestConformance(t *testing.T) {
 		if !assert.Nil(err, cwlPath+" failed to Resolve()") {
 			break
 		}
-
-		assert.True(len(cmds) >= 1, test.Doc)
 
 		// var output interface{}
 		var erre error

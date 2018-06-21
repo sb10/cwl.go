@@ -309,23 +309,31 @@ func (r *Resolver) Output() interface{} {
 		wf = r.Workflow
 	}
 	for _, o := range wf.Outputs {
-		if len(o.Source) == 1 && o.Source[0] != "" {
-			parts := strings.Split(o.Source[0], "/")
-			if len(parts) == 2 {
-				for key, val := range r.OutputContext {
-					leaf := filepath.Base(key)
-					if leaf == parts[0] {
-						if oval, exists := val[parts[1]]; exists {
-							out[o.ID] = oval
+		if len(r.OutputContext) == 0 {
+			var defaultOut interface{}
+			if strings.HasSuffix(o.Types[0].Type, "[]") {
+				defaultOut = []interface{}{}
+			}
+			out[o.ID] = defaultOut
+		} else {
+			if len(o.Source) == 1 && o.Source[0] != "" {
+				parts := strings.Split(o.Source[0], "/")
+				if len(parts) == 2 {
+					for key, val := range r.OutputContext {
+						leaf := filepath.Base(key)
+						if leaf == parts[0] {
+							if oval, exists := val[parts[1]]; exists {
+								out[o.ID] = oval
+							}
 						}
 					}
 				}
-			}
-		} else {
-			for key, val := range r.OutputContext {
-				if key == r.Name {
-					if oval, exists := val[o.ID]; exists {
-						out[o.ID] = oval
+			} else {
+				for key, val := range r.OutputContext {
+					if key == r.Name {
+						if oval, exists := val[o.ID]; exists {
+							out[o.ID] = oval
+						}
 					}
 				}
 			}
