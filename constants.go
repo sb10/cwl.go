@@ -105,6 +105,7 @@ const (
 	typeFile      = "File"
 	typeFileSlice = "File[]"
 	// typeDirectory = "directory"
+	// typeArray = "array"
 )
 
 // classes

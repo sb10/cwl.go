@@ -308,17 +308,34 @@ func (r *Resolver) Output() interface{} {
 	if wf == nil {
 		wf = r.Workflow
 	}
+
 	for _, o := range wf.Outputs {
-		if len(r.OutputContext) == 0 {
-			var defaultOut interface{}
-			if strings.HasSuffix(o.Types[0].Type, "[]") {
-				defaultOut = []interface{}{}
-			}
-			out[o.ID] = defaultOut
-		} else {
-			if len(o.Source) == 1 && o.Source[0] != "" {
-				parts := strings.Split(o.Source[0], "/")
-				if len(parts) == 2 {
+		if len(o.Source) == 1 && o.Source[0] != "" {
+			parts := strings.Split(o.Source[0], "/")
+			if len(parts) == 2 {
+				if len(r.OutputContext) == 0 {
+					// no command Execute() output, return a blank result with
+					// the right data structure; first find this step
+					var blankOut interface{}
+					for _, step := range wf.Steps {
+						if step.ID == parts[0] {
+							if len(step.Scatter) > 0 {
+								if step.ScatterMethod == scatterNestedCrossProduct {
+									blankOut = make([]interface{}, len(step.Scatter))
+									arr := blankOut.([]interface{})
+									for i := 0; i < len(step.Scatter); i++ {
+										arr[i] = []interface{}{}
+									}
+								} else {
+									blankOut = []interface{}{}
+								}
+							}
+							break
+						}
+					}
+					out[o.ID] = blankOut
+				} else {
+					// return the results from Execute()d commands
 					for key, val := range r.OutputContext {
 						leaf := filepath.Base(key)
 						if leaf == parts[0] {
@@ -328,7 +345,14 @@ func (r *Resolver) Output() interface{} {
 						}
 					}
 				}
+			}
+		} else {
+			if len(r.OutputContext) == 0 {
+				// no command Execute() output, return a blank result
+				var blankOut interface{}
+				out[o.ID] = blankOut
 			} else {
+				// return the results from Execute()d commands
 				for key, val := range r.OutputContext {
 					if key == r.Name {
 						if oval, exists := val[o.ID]; exists {
