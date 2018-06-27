@@ -49,6 +49,10 @@ type Command struct {
 	// Execute() before Execute()ing this one.
 	Dependencies []string
 
+	// ParentOutput is non-nil if the Workflow this Command is part of has an
+	// output with a source of this Command's output.
+	ParentOutput *Output
+
 	*Resolver
 }
 
@@ -66,18 +70,22 @@ func NewCommand(uniqueID string, dependencies []string, resolver *Resolver) *Com
 // unique tmp dir is deleted afterwards. STDIN, OUT and ERR are also handled.
 // Requiremnts are taken care of prior to execution.
 //
+// priorOuts is the return value of GetPriorOutputs() called on the same
+// Resolver that made this Command.
+//
 // The return value is the decoded JSON of the file "cwl.output.json" created by
 // Cmd in Cwd, if any. Otherwise it is the result of resolving the output
-// binding.
+// binding. You should call SetOutput() with this returned value on the Resolver
+// that made this Command.
 //
 // For Commands that are for ExpressionTools, instead of running a command line,
 // it just interprets the expression to fill in the output.
-func (c *Command) Execute() (interface{}, error) {
+func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[string]interface{}, error) {
 	// resolve args
 	arguments, shellQuote := c.Workflow.Arguments.Resolve(c.Config)
 
 	// resolve input that comes from prior step outputs
-	for key, val := range c.OutputContext {
+	for key, val := range priorOuts {
 		child := filepath.Base(key)
 
 		for pkey, pval := range c.Parameters {
@@ -106,14 +114,12 @@ func (c *Command) Execute() (interface{}, error) {
 	if val, exists := c.Parameters[scatterNestedInput]; exists {
 		nestedOutIndex = val.([2]int)
 		nestedOutIndexFound = true
-		delete(c.Parameters, scatterNestedInput)
 	}
 	var flatOutIndexFound bool
 	var flatOutIndex int
 	if val, exists := c.Parameters[scatterFlatInput]; exists {
 		flatOutIndex = val.(int)
 		flatOutIndexFound = true
-		delete(c.Parameters, scatterFlatInput)
 	}
 	priors, inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.IFC, c.InputContext)
 	if err != nil {
@@ -157,6 +163,8 @@ func (c *Command) Execute() (interface{}, error) {
 			return out, fmt.Errorf("expression tool returned string [%s] or numner [%f]", str, i)
 		}
 
+		// *** should only be putting things in out where key matches something
+		// in the outputs
 		for _, key := range obj.Keys() {
 			val, errg := obj.Get(key)
 			if errg != nil {
@@ -192,7 +200,16 @@ func (c *Command) Execute() (interface{}, error) {
 			}
 		}
 
-		c.OutputContext[c.UniqueID] = out
+		if c.ParentOutput != nil && len(c.ParentOutput.Source) == 1 {
+			key := filepath.Base(c.ParentOutput.Source[0])
+			if val, exists := out[key]; exists {
+				parentStep := filepath.Dir(c.Name)
+				parentOut := make(map[string]interface{})
+				parentOut[c.ParentOutput.ID] = val
+				out[parentStep] = parentOut
+			}
+		}
+
 		return out, nil
 	}
 
@@ -366,7 +383,6 @@ func (c *Command) Execute() (interface{}, error) {
 		}
 
 		err = json.Unmarshal(b, &out)
-		c.OutputContext[c.UniqueID] = out
 		return out, err
 	}
 
@@ -390,27 +406,6 @@ func (c *Command) Execute() (interface{}, error) {
 		} else {
 			out[o.ID] = result
 		}
-	}
-
-	if existing, exists := c.OutputContext[c.UniqueID]; exists {
-		for key, val := range out {
-			if current, exists := existing[key]; exists {
-				if nestedOutIndexFound || flatOutIndexFound {
-					existing[key] = mergeSlices(current, val)
-				} else {
-					if arr, ok := current.([]interface{}); ok {
-						arr = append(arr, val)
-						existing[key] = arr
-					} else {
-						existing[key] = []interface{}{current, val}
-					}
-				}
-			} else {
-				existing[key] = val
-			}
-		}
-	} else {
-		c.OutputContext[c.UniqueID] = out
 	}
 
 	return out, err
@@ -553,42 +548,6 @@ func evaluateExpression(e string, vm *otto.Otto) (string, float64, *otto.Object,
 		}
 	}
 	return e, fl, nil, nil
-}
-
-// mergeSlices returns a new slice with values at each index taken from the
-// input slice that had a non-nil value at that index.
-func mergeSlices(ai, bi interface{}) []interface{} {
-	a := ai.([]interface{})
-	b := bi.([]interface{})
-	l := len(a)
-	if len(b) > l {
-		l = len(b)
-	}
-
-	merged := make([]interface{}, l)
-	for i := 0; i < l; i++ {
-		var valA, valB interface{}
-		if i < len(a) {
-			valA = a[i]
-		}
-		if i < len(b) {
-			valB = b[i]
-		}
-		if valA == nil && valB == nil {
-			continue
-		}
-
-		if valA != nil && valB != nil {
-			// should only happen if both are nested slices
-			merged[i] = mergeSlices(valA, valB)
-		} else if valA != nil {
-			merged[i] = valA
-		} else {
-			merged[i] = valB
-		}
-	}
-
-	return merged
 }
 
 // Commands is a slice of Command.

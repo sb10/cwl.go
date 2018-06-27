@@ -66,7 +66,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 35 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 40 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		if *conTestNum != 0 {
 			done++
@@ -118,10 +118,12 @@ func TestConformance(t *testing.T) {
 		// var output interface{}
 		var erre error
 		for _, cmd := range cmds {
-			_, erre = cmd.Execute()
+			var out map[string]interface{}
+			out, erre = cmd.Execute(r.GetPriorOutputs())
 			if !assert.Nil(erre, test.Doc+" failed") {
 				break
 			}
+			r.SetOutput(cmd.UniqueID, out, cmd.Parameters)
 		}
 		output := r.Output()
 

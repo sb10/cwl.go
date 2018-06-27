@@ -37,8 +37,11 @@ func main() {
 	r, cmds, _ := cwl.Resolve("hello.cwl", "params.yaml")
 	for _, cmd := range cmds {
 		// arrange to only execute these in the correct order according to the
-		// dependency tree
-		output, _ := cmd.Execute()
+		// dependency tree; you could potentially Execute each command on a
+		// different host, pulling in the return value of GetPriorOutputs() and
+		// sending the output back over the wire.
+		output, _ := cmd.Execute(r.GetPriorOutputs())
+		r.SetOutput(cmd.UniqueID, output, cmd.Parameters)
 	}
 	fmt.Printf("%+v\n", r.Output())
 }

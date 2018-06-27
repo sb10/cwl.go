@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // ResolveConfig is used to configure a NewResolver(), specifying runtime
@@ -120,6 +121,7 @@ type Resolver struct {
 	InputContext   map[string]interface{}
 	OutputContext  map[string]map[string]interface{}
 	outputWorkflow *Root
+	mutex          sync.RWMutex
 }
 
 // NewResolver creates a new Resolver struct for the given pre-decoded Root. The
@@ -262,11 +264,25 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 				if errr != nil {
 					return nil, errr
 				}
+
+				wfOutputsByStep := make(map[string]*Output)
+				for _, o := range subR.Workflow.Outputs {
+					if len(o.Source) == 1 && o.Source[0] != "" {
+						parts := strings.Split(o.Source[0], "/")
+						wfOutputsByStep[parts[0]] = o
+					}
+				}
+
 				for _, c := range subCmds {
 					if c.Workflow.ID == "" {
 						c.Workflow.ID = step.ID
 					} else {
 						c.Workflow.ID = step.ID + "/" + c.Workflow.ID
+					}
+
+					cmdStep := filepath.Base(c.Name)
+					if o, exists := wfOutputsByStep[cmdStep]; exists {
+						c.ParentOutput = o
 					}
 				}
 				cmds = append(cmds, subCmds...)
@@ -300,8 +316,67 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 	return cmds, err
 }
 
+// SetOutput sets the output returned by Execute() called on a Command that was
+// returned by r.Resolve(). uniqueID is the Command's UniqueID. It is done this
+// way to facilitate Execute()ing Commands on remote machines and sending their
+// outputs back over the wire. This must be done to be able to report the final
+// output with Output().
+func (r *Resolver) SetOutput(uniqueID string, outs map[string]interface{}, params Parameters) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	// pull out any parent outputs stored here
+	for key, val := range outs {
+		if strings.Contains(key, "/") && strings.HasPrefix(key, r.Name) {
+			r.OutputContext[key] = val.(map[string]interface{})
+			delete(outs, key)
+		}
+	}
+
+	// store the value in the appropriate data structure
+	var nestedOutIndexFound bool
+	if _, exists := params[scatterNestedInput]; exists {
+		nestedOutIndexFound = true
+	}
+	var flatOutIndexFound bool
+	if _, exists := params[scatterFlatInput]; exists {
+		flatOutIndexFound = true
+	}
+
+	if existing, exists := r.OutputContext[uniqueID]; exists {
+		for key, val := range outs {
+			if current, exists := existing[key]; exists {
+				if nestedOutIndexFound || flatOutIndexFound {
+					existing[key] = mergeSlices(current, val)
+				} else {
+					if arr, ok := current.([]interface{}); ok {
+						arr = append(arr, val)
+						existing[key] = arr
+					} else {
+						existing[key] = []interface{}{current, val}
+					}
+				}
+			} else {
+				existing[key] = val
+			}
+		}
+	} else {
+		r.OutputContext[uniqueID] = outs
+	}
+}
+
+// GetPriorOutputs is used to get any prior outputs set with SetOutput(), to
+// Execute() a new Command with the full context. It is done this way to
+// facilitate Execute()ing Commands on remote machines.
+func (r *Resolver) GetPriorOutputs() map[string]map[string]interface{} {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	return r.OutputContext
+}
+
 // Output returns the final Workflow output. Only valid if called after
-// Execute()ing all the Commands returned by Resolve().
+// Execute()ing all the Commands returned by Resolve() and settint those
+// returned outputs with SetOutput().
 func (r *Resolver) Output() interface{} {
 	out := make(map[string]interface{})
 	wf := r.outputWorkflow
@@ -505,4 +580,40 @@ func (r *Resolver) resolveStepOuts(name string, outs map[string]map[string]bool,
 	for _, sout := range stepOuts {
 		outs[name][sout.ID] = true
 	}
+}
+
+// mergeSlices returns a new slice with values at each index taken from the
+// input slice that had a non-nil value at that index.
+func mergeSlices(ai, bi interface{}) []interface{} {
+	a := ai.([]interface{})
+	b := bi.([]interface{})
+	l := len(a)
+	if len(b) > l {
+		l = len(b)
+	}
+
+	merged := make([]interface{}, l)
+	for i := 0; i < l; i++ {
+		var valA, valB interface{}
+		if i < len(a) {
+			valA = a[i]
+		}
+		if i < len(b) {
+			valB = b[i]
+		}
+		if valA == nil && valB == nil {
+			continue
+		}
+
+		if valA != nil && valB != nil {
+			// should only happen if both are nested slices
+			merged[i] = mergeSlices(valA, valB)
+		} else if valA != nil {
+			merged[i] = valA
+		} else {
+			merged[i] = valB
+		}
+	}
+
+	return merged
 }

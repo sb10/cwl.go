@@ -123,6 +123,7 @@ const (
 	reqJS       = "InlineJavascriptRequirement"
 	reqScatter  = "ScatterFeatureRequirement"
 	reqMultiple = "MultipleInputFeatureRequirement"
+	// reqSubWorkFlow = "SubworkflowFeatureRequirement"
 )
 
 // merges
