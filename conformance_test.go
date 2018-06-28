@@ -66,7 +66,7 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 46 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	toDo := 48 // TODO: not yet fully compatible, working on conformance test by test, total 111
 	for _, test := range *c {
 		if *conTestNum != 0 {
 			done++
@@ -97,8 +97,13 @@ func TestConformance(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ifc := func(path string) string {
-			staged := filepath.Join(stagingDir, filepath.Base(path))
+		ifc := func(id, path string) string {
+			dir := filepath.Join(stagingDir, id)
+			errm := os.MkdirAll(dir, 0700)
+			if errm != nil && !os.IsExist(errm) {
+				t.Fatal(errm)
+			}
+			staged := filepath.Join(dir, filepath.Base(path))
 			copyFile(path, staged)
 			return staged
 		}

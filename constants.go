@@ -96,8 +96,8 @@ const (
 // cwltype symbols
 const (
 	// typeNull      = "null"
-	// typeBoolean   = "boolean"
-	typeInt = "int"
+	typeBoolean = "boolean"
+	typeInt     = "int"
 	// typeLong      = "long"
 	// typeFloat     = "float"
 	// typeDouble    = "double"
@@ -105,7 +105,7 @@ const (
 	typeFile      = "File"
 	typeFileSlice = "File[]"
 	// typeDirectory = "directory"
-	// typeArray = "array"
+	typeArray = "array"
 )
 
 // classes

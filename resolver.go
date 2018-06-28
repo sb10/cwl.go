@@ -215,7 +215,10 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 				return nil, errs
 			}
 
-			for _, sp := range sps {
+			for i, sp := range sps {
+				config := r.Config
+				config.OutputDir = filepath.Join(config.OutputDir, name, step.ID, strconv.Itoa(i))
+
 				var subR *Resolver
 				var subErr error
 				if step.Run.Workflow == nil {
@@ -252,9 +255,9 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 						cwlDir = filepath.Dir(cwlPath)
 					}
 
-					subR, subErr = NewResolver(root, r.Config, cwlDir, r.OutputContext)
+					subR, subErr = NewResolver(root, config, cwlDir, r.OutputContext)
 				} else {
-					subR, subErr = NewResolver(step.Run.Workflow, r.Config, r.CWLDir, r.OutputContext)
+					subR, subErr = NewResolver(step.Run.Workflow, config, r.CWLDir, r.OutputContext)
 				}
 				if subErr != nil {
 					return nil, subErr

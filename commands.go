@@ -96,7 +96,13 @@ func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[stri
 						if file, ok := out.(map[interface{}]interface{}); ok {
 							if t, exists := file[fieldClass]; exists && t == typeFile {
 								if file[fieldLocation] != "" && !filepath.IsAbs(file[fieldLocation].(string)) {
-									file[fieldLocation] = filepath.Join(c.Config.OutputDir, file[fieldLocation].(string))
+									// figure out the location of the prior
+									// steps output dir based on it being
+									// similar to our own *** not sure how
+									// reliable this is; can't it just always
+									// record an absolute path??
+									priorOutputDir := strings.Replace(c.Config.OutputDir, c.Name, key, 1)
+									file[fieldLocation] = filepath.Join(priorOutputDir, file[fieldLocation].(string))
 									out = file
 								}
 							}
@@ -121,7 +127,7 @@ func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[stri
 		flatOutIndex = val.(int)
 		flatOutIndexFound = true
 	}
-	priors, inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.IFC, c.InputContext)
+	priors, inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.Name, c.IFC, c.InputContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve required inputs: %v", err)
 	}

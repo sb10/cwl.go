@@ -63,10 +63,11 @@ func (input Input) New(i interface{}) *Input {
 }
 
 // flatten
-func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback) ([]string, error) {
+func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback, stepUnique string) ([]string, error) {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
+		inputContext[input.ID] = input.Provided
 		tobejoined := []string{}
 		for _, e := range input.Provided.([]interface{}) {
 			tobejoined = append(tobejoined, fmt.Sprintf("%v", e))
@@ -84,7 +85,7 @@ func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+					path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
 					if err != nil {
 						return nil, err
 					}
@@ -97,6 +98,8 @@ func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]
 			// it's NOT gonna be joined with .Binding.Separator.
 			flattened = append(flattened, separated...)
 		}
+	case typeBoolean:
+		inputContext[input.ID] = input.Provided
 	default:
 		inputContext[input.ID] = input.Provided
 		if input.RequiredType != nil {
@@ -192,16 +195,16 @@ func (input *Input) flattenWithRequiredType() []string {
 	return flattened
 }
 
-// InputFileCallback functions take a path to an input file (which may be an
-// absolute path on the local file system, or potentially an s3:// path), and
-// return a path to where a an executable should access that file from. This
-// allows you to stage the file if desired.
-type InputFileCallback func(path string) string
+// InputFileCallback functions take a unique id and a path to an input file
+// (which may be an absolute path on the local file system, or potentially an
+// s3:// path), and return a path to where an executable should access that file
+// from. This allows you to stage the file if desired.
+type InputFileCallback func(id, path string) string
 
 // DefaultInputFileCallback is an InputFileCallback that simply returns the
 // path unaltered, for when you don't wish to do any staging, allowing direct
 // access to input files at their original paths.
-var DefaultInputFileCallback = func(path string) string {
+var DefaultInputFileCallback = func(id, path string) string {
 	return path
 }
 
@@ -219,7 +222,7 @@ var DefaultInputFileCallback = func(path string) string {
 //
 // The provided inputContext will have an entry filled in with key of this
 // input's ID, and value being some kind of resolved value.
-func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, optionalIFC ...InputFileCallback) ([]string, error) {
+func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, stepUnique string, optionalIFC ...InputFileCallback) ([]string, error) {
 	var ifc InputFileCallback
 	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
 		ifc = optionalIFC[0]
@@ -231,25 +234,27 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 	if input.Provided == nil {
 		// In case "input.Default == nil" should be validated by usage layer.
 		if input.Default != nil {
-			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc)
+			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc, stepUnique)
 		}
 		return flattened, nil
 	}
 
+	addPrefix := true
 	if repr := input.Types[0]; len(input.Types) == 1 {
 		switch repr.Type {
-		case "array":
-			f, err := input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc)
+		case typeArray:
+			f, err := input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc, stepUnique)
 			if err != nil {
 				return nil, err
 			}
 			flattened = append(flattened, f...)
-		case "int":
+		case typeInt:
+			inputContext[input.ID] = input.Provided.(int)
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided.(int)))
 		case typeFile:
 			if file, ok := input.Provided.(map[interface{}]interface{}); ok {
 				// TODO: more strict type casting
-				path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+				path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
 				if err != nil {
 					return nil, err
 				}
@@ -261,7 +266,7 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 			if slice, ok := input.Provided.([]interface{}); ok {
 				for _, maybeFile := range slice {
 					if file, ok := maybeFile.(map[interface{}]interface{}); ok {
-						path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, input.Binding, input.ID, inputContext)
+						path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
 						if err != nil {
 							return nil, err
 						}
@@ -273,13 +278,16 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 			} else {
 				return nil, fmt.Errorf("expected a File[], got %+v", input.Provided)
 			}
+		case typeBoolean:
+			inputContext[input.ID] = input.Provided
+			addPrefix = input.Provided.(bool)
 		default:
 			inputContext[input.ID] = input.Provided
 			flattened = append(flattened, fmt.Sprintf("%v", input.Provided))
 		}
 	}
 
-	if input.Binding != nil && input.Binding.Prefix != "" {
+	if addPrefix && input.Binding != nil && input.Binding.Prefix != "" {
 		flattened = append([]string{input.Binding.Prefix}, flattened...)
 	}
 
@@ -314,7 +322,7 @@ func (input *Input) Resolve(params Parameters, reqs Requirements) error {
 // resolvePath converts relative paths to absolute ones, converted by the given
 // callback. It also sets inputContext path and reads file content according to
 // LoadContents binding.
-func resolvePath(path, dir string, ifc InputFileCallback, binding *Binding, id string, inputContext map[string]interface{}) (string, error) {
+func resolvePath(path, dir string, ifc InputFileCallback, stepUnique string, binding *Binding, id string, inputContext map[string]interface{}) (string, error) {
 	if dir != "" && !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
 	}
@@ -329,7 +337,7 @@ func resolvePath(path, dir string, ifc InputFileCallback, binding *Binding, id s
 		inputContext[id].(map[string]string)["contents"] = content
 	}
 
-	path = ifc(path)
+	path = ifc(stepUnique, path)
 	inputContext[id].(map[string]string)["path"] = path
 	return path, nil
 }
@@ -377,7 +385,7 @@ func (ins Inputs) New(i interface{}) Inputs {
 // considering the provided params (and directories, for resolving relative
 // paths). It also fills in the given context, for use with interpreting
 // expressions.
-func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir string, ifc InputFileCallback, inputContext map[string]interface{}) (priors []string, result []string, err error) {
+func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir, stepUnique string, ifc InputFileCallback, inputContext map[string]interface{}) (priors []string, result []string, err error) {
 	defer func() {
 		if i := recover(); i != nil {
 			err = fmt.Errorf("failed to resolve required inputs against provided params: %v", i)
@@ -392,7 +400,7 @@ func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDi
 			return priors, result, err
 		}
 
-		theseIns, err := in.Flatten(inputContext, paramsDir, CWLDir, ifc)
+		theseIns, err := in.Flatten(inputContext, paramsDir, CWLDir, stepUnique, ifc)
 		if err != nil {
 			return priors, result, err
 		}
