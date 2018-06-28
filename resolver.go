@@ -208,6 +208,25 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 		for _, step := range r.Workflow.Steps {
 			stepParams := r.resolveStepParams(step.In, multiple, stepOuts)
 
+			// fill in missing params from step input defaults
+			for _, in := range step.In {
+				if val, exists := stepParams[in.ID]; !exists || val == nil {
+					if in.Default != nil {
+						if thing, ok := in.Default.Self.(map[string]interface{}); ok && thing[fieldClass] == typeFile {
+							// convert to a map[interface{}]interface{} so that
+							// we later interpret this as a File
+							file := make(map[interface{}]interface{})
+							for k, v := range thing {
+								file[k] = v
+							}
+							stepParams[in.ID] = file
+						} else {
+							stepParams[in.ID] = in.Default.Self
+						}
+					}
+				}
+			}
+
 			r.resolveStepOuts(step.ID, stepOuts, step.Out)
 
 			sps, errs := r.handleScatter(scatter, step, stepParams)
@@ -264,25 +283,6 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 				subR.Workflow.Hints = subR.Workflow.Hints.Merge(r.Workflow.Hints)
 				subR.Workflow.Requirements = subR.Workflow.Requirements.Merge(step.Requirements)
 				subR.Workflow.Hints = subR.Workflow.Hints.Merge(step.Hints)
-
-				// fill in missing params from step input defaults
-				for _, in := range step.In {
-					if val, exists := sp[in.ID]; !exists || val == nil {
-						if in.Default != nil {
-							if thing, ok := in.Default.Self.(map[string]interface{}); ok && thing[fieldClass] == typeFile {
-								// convert to a map[interface{}]interface{} so that
-								// we later interpret this as a File
-								file := make(map[interface{}]interface{})
-								for k, v := range thing {
-									file[k] = v
-								}
-								sp[in.ID] = file
-							} else {
-								sp[in.ID] = in.Default.Self
-							}
-						}
-					}
-				}
 
 				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc, "", nodes)
 				if errr != nil {
