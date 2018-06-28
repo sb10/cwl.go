@@ -30,6 +30,7 @@ type Step struct {
 	Out           []StepOutput
 	Run           Run
 	Requirements  []Requirement
+	Hints         []Hint
 	Scatter       []string
 	ScatterMethod string
 }
@@ -62,6 +63,8 @@ func (s Step) New(i interface{}) Step {
 				dest.Out = StepOutput{}.NewList(v)
 			case fieldRequirements:
 				dest.Requirements = Requirements{}.New(v)
+			case fieldHints:
+				dest.Hints = Hints{}.New(v)
 			case fieldScatter:
 				dest.Scatter = StringArrayable(v)
 			case fieldScatterMethod:

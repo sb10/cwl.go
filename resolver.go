@@ -262,6 +262,8 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 
 				subR.Workflow.Requirements = subR.Workflow.Requirements.Merge(r.Workflow.Requirements)
 				subR.Workflow.Hints = subR.Workflow.Hints.Merge(r.Workflow.Hints)
+				subR.Workflow.Requirements = subR.Workflow.Requirements.Merge(step.Requirements)
+				subR.Workflow.Hints = subR.Workflow.Hints.Merge(step.Hints)
 
 				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc, "", nodes)
 				if errr != nil {
