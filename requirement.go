@@ -176,3 +176,66 @@ func (r Requirements) DoScatterOrMultiple() (doScatter bool, doMultiple bool) {
 	}
 	return doScatter, doMultiple
 }
+
+// Merge merges in parent requirements with this set, returning the new set.
+// If a parent requirement is already specified here, it is ignored.
+func (r Requirements) Merge(parentReqs Requirements) Requirements {
+	var hasShellReq, hasJSReq, hasWDReq, hasEnvReq bool
+	var jsIndex, wdIndex, envIndex int
+	for i, req := range r {
+		switch req.Class {
+		case reqShell:
+			hasShellReq = true
+		case reqJS:
+			hasJSReq = true
+			jsIndex = i
+		case reqWorkDir:
+			hasWDReq = true
+			wdIndex = i
+		case reqEnv:
+			hasEnvReq = true
+			envIndex = i
+		}
+	}
+
+	merged := r[0:]
+	for _, parentReq := range parentReqs {
+		switch parentReq.Class {
+		case reqShell:
+			if !hasShellReq {
+				merged = append(merged, parentReq)
+			}
+		case reqJS:
+			if !hasJSReq {
+				merged = append(merged, parentReq)
+			} else {
+				// *** just concatenate the expressions?
+				merged[jsIndex].ExpressionLib = append(merged[jsIndex].ExpressionLib, parentReq.ExpressionLib...)
+			}
+		case reqWorkDir:
+			if !hasWDReq {
+				merged = append(merged, parentReq)
+			} else {
+				// *** just concatenate the listings?
+				merged[wdIndex].Listing = append(merged[wdIndex].Listing, parentReq.Listing...)
+			}
+		case reqEnv:
+			if !hasEnvReq {
+				merged = append(merged, parentReq)
+			} else {
+				// merge env vars, ignoring parent values for keys set here
+				alreadySet := make(map[string]bool)
+				for _, ed := range merged[envIndex].EnvDef {
+					alreadySet[ed.Name] = true
+				}
+
+				for _, ed := range parentReq.EnvDef {
+					if !alreadySet[ed.Name] {
+						merged[envIndex].EnvDef = append(merged[envIndex].EnvDef, ed)
+					}
+				}
+			}
+		}
+	}
+	return merged
+}

@@ -260,6 +260,9 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 					return nil, subErr
 				}
 
+				subR.Workflow.Requirements = subR.Workflow.Requirements.Merge(r.Workflow.Requirements)
+				subR.Workflow.Hints = subR.Workflow.Hints.Merge(r.Workflow.Hints)
+
 				subCmds, errr := subR.Resolve(name+"/"+step.ID, sp, paramsDir, ifc, "", nodes)
 				if errr != nil {
 					return nil, errr
@@ -280,10 +283,15 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 						c.Workflow.ID = step.ID + "/" + c.Workflow.ID
 					}
 
+					// transfer parent output details
 					cmdStep := filepath.Base(c.Name)
 					if o, exists := wfOutputsByStep[cmdStep]; exists {
 						c.ParentOutput = o
 					}
+
+					// merge parent requirements and hints
+					c.Workflow.Requirements = c.Workflow.Requirements.Merge(subR.Workflow.Requirements)
+					c.Workflow.Hints = c.Workflow.Hints.Merge(subR.Workflow.Hints)
 				}
 				cmds = append(cmds, subCmds...)
 			}

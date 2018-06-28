@@ -449,8 +449,10 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, []string, error) {
 		return nil, false, nil, err
 	}
 
+	// handle requirements
 	viaShell := false
 	var env []string
+	setEnvs := make(map[string]bool)
 	for _, req := range c.Workflow.Requirements {
 		switch req.Class {
 		case reqShell:
@@ -486,9 +488,27 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, []string, error) {
 					return vm, viaShell, env, err
 				}
 				env = append(env, fmt.Sprintf("%s=%s", ed.Name, val))
+				setEnvs[ed.Name] = true
 			}
 		}
 	}
+
+	// handle hints
+	for _, hint := range c.Workflow.Hints {
+		switch hint.Class {
+		case reqEnv:
+			for _, ed := range hint.Envs {
+				if !setEnvs[ed.Name] {
+					val, _, _, err := evaluateExpression(ed.Value, vm)
+					if err != nil {
+						return vm, viaShell, env, err
+					}
+					env = append(env, fmt.Sprintf("%s=%s", ed.Name, val))
+				}
+			}
+		}
+	}
+
 	return vm, viaShell, env, nil
 }
 

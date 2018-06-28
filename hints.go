@@ -29,6 +29,43 @@ func (h Hints) New(i interface{}) Hints {
 	return dest
 }
 
+// Merge merges in parent hints with this set, returning the new set.
+// If a parent hint is already specified here, it is ignored.
+func (h Hints) Merge(parentHints Hints) Hints {
+	var hasEnvHint bool
+	var envIndex int
+	for i, hint := range h {
+		switch hint.Class {
+		case reqEnv:
+			hasEnvHint = true
+			envIndex = i
+		}
+	}
+
+	merged := h[0:]
+	for _, parentHint := range parentHints {
+		switch parentHint.Class {
+		case reqEnv:
+			if !hasEnvHint {
+				merged = append(merged, parentHint)
+			} else {
+				// merge env vars, ignoring parent values for keys set here
+				alreadySet := make(map[string]bool)
+				for _, ed := range merged[envIndex].Envs {
+					alreadySet[ed.Name] = true
+				}
+
+				for _, ed := range parentHint.Envs {
+					if !alreadySet[ed.Name] {
+						merged[envIndex].Envs = append(merged[envIndex].Envs, ed)
+					}
+				}
+			}
+		}
+	}
+	return merged
+}
+
 // Hint ...
 type Hint struct {
 	Class      string
