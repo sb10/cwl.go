@@ -187,7 +187,7 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 
 		// fill in missing params from workflow input defaults
 		for _, in := range r.Workflow.Inputs {
-			if _, exists := r.Parameters[in.ID]; !exists {
+			if val, exists := r.Parameters[in.ID]; !exists || val == nil {
 				if in.Default != nil {
 					if thing, ok := in.Default.Self.(map[string]interface{}); ok && thing[fieldClass] == typeFile {
 						// convert to a map[interface{}]interface{} so that
@@ -267,7 +267,7 @@ func (r *Resolver) Resolve(name string, params Parameters, paramsDir string, ifc
 
 				// fill in missing params from step input defaults
 				for _, in := range step.In {
-					if _, exists := sp[in.ID]; !exists {
+					if val, exists := sp[in.ID]; !exists || val == nil {
 						if in.Default != nil {
 							if thing, ok := in.Default.Self.(map[string]interface{}); ok && thing[fieldClass] == typeFile {
 								// convert to a map[interface{}]interface{} so that
