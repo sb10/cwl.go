@@ -25,14 +25,14 @@ const (
 	fieldLoadContents  = "loadContents"
 	fieldOutputEval    = "outputEval"
 	fieldLocation      = "location"
-	// fieldPath           = "path"
-	// fieldBasename       = "basename"
+	fieldPath          = "path"
+	fieldBasename      = "basename"
 	// fieldDirname        = "dirname"
-	// fieldNameRoot       = "nameroot"
-	// fieldNameExt        = "nameext"
-	// fieldChecksum       = "checksum"
-	// fieldSize           = "size"
-	// fieldContents       = "contents"
+	fieldNameRoot      = "nameroot"
+	fieldNameExt       = "nameext"
+	fieldChecksum      = "checksum"
+	fieldSize          = "size"
+	fieldContents      = "contents"
 	fieldListing       = "listing"
 	fieldSource        = "source"
 	fieldFields        = "fields"
@@ -104,8 +104,8 @@ const (
 	typeString    = "string"
 	typeFile      = "File"
 	typeFileSlice = "File[]"
-	// typeDirectory = "directory"
-	typeArray = "array"
+	typeDirectory = "Directory"
+	typeArray     = "array"
 )
 
 // classes
@@ -139,3 +139,5 @@ const (
 	scatterNestedInput        = "_!_scatter_nested_input_!_"
 	scatterFlatInput          = "_!_scatter_flat_input_!_"
 )
+
+const escapeStr = `\`

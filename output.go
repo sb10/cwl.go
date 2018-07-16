@@ -22,7 +22,7 @@ type Output struct {
 	Binding        *Binding `json:"outputBinding"`
 	Source         []string `json:"outputSource"`
 	Types          []Type   `json:"type"`
-	SecondaryFiles []SecondaryFile
+	SecondaryFiles SecondaryFiles
 }
 
 // New constructs "Output" struct from interface.
@@ -58,7 +58,7 @@ func (o Output) New(i interface{}) *Output {
 // CommandLineTool in the given output directory, specfied in the binding.
 // stdoutPath is used if the type is 'stdout', to determine the path of the
 // output file. Likewise for stderr. Expressions are evaluated with the given
-// javascript vm.
+// javascript vm. dir is the main configured output directory.
 func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (interface{}, error) {
 	var result map[string]interface{}
 	var results []map[string]interface{}
@@ -77,6 +77,16 @@ func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (int
 				if err != nil {
 					return nil, err
 				}
+
+				// add in details for any secondary files
+				if len(o.SecondaryFiles) > 0 {
+					files, err := o.SecondaryFiles.ToFiles(dir, path, vm, true)
+					if err != nil {
+						return nil, err
+					}
+					thisResult[fieldSecondaryFiles] = files
+				}
+
 				results = append(results, thisResult)
 			}
 		case fieldStdOut:
@@ -151,8 +161,8 @@ func globPaths(binding *Binding, dir string) ([]string, error) {
 }
 
 func outputFileStats(dir, path string, loadContents bool) (map[string]interface{}, error) {
-	// we need the file size
-	info, err := os.Stat(path)
+	// we need the file size and sha1 hash of the file contents
+	size, sha, err := fileSizeAndSha(path)
 	if err != nil {
 		// we already know the file exists, so errors here
 		// should not be ignored
@@ -167,10 +177,36 @@ func outputFileStats(dir, path string, loadContents bool) (map[string]interface{
 		}
 	}
 
-	// and the sha1 hash of the file contents
-	f, err := os.Open(path)
+	rel, err := filepath.Rel(dir, path)
 	if err != nil {
 		return nil, err
+	}
+
+	result := map[string]interface{}{
+		fieldClass:    typeFile,
+		fieldLocation: rel,
+		fieldSize:     size,
+		fieldChecksum: sha,
+	}
+
+	if content != "" {
+		result[fieldContents] = content
+	}
+
+	return result, err
+}
+
+func fileSizeAndSha(path string) (size int, sha string, err error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		// we already know the file exists, so errors here
+		// should not be ignored
+		return 0, "", err
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
 	}
 	defer func() {
 		err = f.Close()
@@ -179,26 +215,10 @@ func outputFileStats(dir, path string, loadContents bool) (map[string]interface{
 	hash := sha1.New()
 	_, err = io.Copy(hash, f)
 	if err != nil {
-		return nil, err
+		return 0, "", err
 	}
 
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return nil, err
-	}
-
-	result := map[string]interface{}{
-		"class":    "File",
-		"location": rel,
-		"size":     int(info.Size()),
-		"checksum": fmt.Sprintf("sha1$%x", hash.Sum(nil)),
-	}
-
-	if content != "" {
-		result["contents"] = content
-	}
-
-	return result, err
+	return int(info.Size()), fmt.Sprintf("sha1$%x", hash.Sum(nil)), err
 }
 
 // Outputs represents "outputs" field in "CWL".

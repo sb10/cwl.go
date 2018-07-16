@@ -216,8 +216,17 @@ func (r Requirements) Merge(parentReqs Requirements) Requirements {
 			if !hasWDReq {
 				merged = append(merged, parentReq)
 			} else {
-				// *** just concatenate the listings?
-				merged[wdIndex].Listing = append(merged[wdIndex].Listing, parentReq.Listing...)
+				// merge listings, ignoring parent values for entrynames set here
+				alreadySet := make(map[string]bool)
+				for _, l := range merged[wdIndex].Listing {
+					alreadySet[l.EntryName] = true
+				}
+
+				for _, l := range parentReq.Listing {
+					if !alreadySet[l.EntryName] {
+						merged[wdIndex].Listing = append(merged[wdIndex].Listing, l)
+					}
+				}
 			}
 		case reqEnv:
 			if !hasEnvReq {

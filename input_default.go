@@ -3,6 +3,8 @@ package cwl
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/robertkrimen/otto"
 )
 
 // InputDefault represents "default" field in an element of "inputs".
@@ -21,14 +23,14 @@ func (d InputDefault) New(i interface{}) *InputDefault {
 // were files with relative paths being made absolute relative to the given
 // cwl directory. If cwlDir is a blank string, the path is not altered. The
 // ifc allows you to define staging.
-func (d *InputDefault) Flatten(binding *Binding, id string, inputContext map[string]interface{}, cwlDir string, ifc InputFileCallback, stepUnique string) ([]string, error) {
+func (d *InputDefault) Flatten(binding *Binding, id string, inputContext map[string]interface{}, cwlDir string, ifc InputFileCallback, stepUnique string, vm *otto.Otto) ([]string, error) {
 	var flattened []string
 	switch v := d.Self.(type) {
 	case map[string]interface{}:
 		// TODO: more strict type casting ;(
 		class, ok := v[fieldClass]
 		if ok && class == typeFile {
-			path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), cwlDir, ifc, stepUnique, binding, id, inputContext)
+			path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), cwlDir, ifc, stepUnique, binding, id, inputContext, nil, vm)
 			if err != nil {
 				return nil, err
 			}

@@ -7,19 +7,21 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/robertkrimen/otto"
 )
 
 // Input represents "CommandInputParameter".
 // @see http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter
 type Input struct {
-	ID             string          `json:"id"`
-	Label          string          `json:"label"`
-	Doc            string          `json:"doc"`
-	Format         string          `json:"format"`
-	Binding        *Binding        `json:"inputBinding"`
-	Default        *InputDefault   `json:"default"`
-	Types          []Type          `json:"type"`
-	SecondaryFiles []SecondaryFile `json:"secondary_files"`
+	ID             string         `json:"id"`
+	Label          string         `json:"label"`
+	Doc            string         `json:"doc"`
+	Format         string         `json:"format"`
+	Binding        *Binding       `json:"inputBinding"`
+	Default        *InputDefault  `json:"default"`
+	Types          []Type         `json:"type"`
+	SecondaryFiles SecondaryFiles `json:"secondary_files"`
 	// Input.Provided is what provided by parameters.(json|yaml)
 	Provided interface{} `json:"-"`
 	// Requirement ..
@@ -63,7 +65,7 @@ func (input Input) New(i interface{}) *Input {
 }
 
 // flatten
-func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback, stepUnique string) ([]string, error) {
+func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]interface{}, paramsDir string, ifc InputFileCallback, stepUnique string, vm *otto.Otto) ([]string, error) {
 	flattened := []string{}
 	switch typ.Type {
 	case typeInt: // Array of Int
@@ -85,7 +87,7 @@ func (input *Input) flatten(typ Type, binding *Binding, inputContext map[string]
 					if binding != nil && binding.Prefix != "" {
 						separated = append(separated, binding.Prefix)
 					}
-					path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
+					path, err := resolvePath(fmt.Sprintf("%v", v[fieldLocation]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext, input.SecondaryFiles, vm)
 					if err != nil {
 						return nil, err
 					}
@@ -222,7 +224,7 @@ var DefaultInputFileCallback = func(id, path string) string {
 //
 // The provided inputContext will have an entry filled in with key of this
 // input's ID, and value being some kind of resolved value.
-func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, stepUnique string, optionalIFC ...InputFileCallback) ([]string, error) {
+func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlDir string, stepUnique string, vm *otto.Otto, optionalIFC ...InputFileCallback) ([]string, error) {
 	var ifc InputFileCallback
 	if len(optionalIFC) == 1 && optionalIFC[0] != nil {
 		ifc = optionalIFC[0]
@@ -234,7 +236,7 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 	if input.Provided == nil {
 		// In case "input.Default == nil" should be validated by usage layer.
 		if input.Default != nil {
-			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc, stepUnique)
+			return input.Default.Flatten(input.Binding, input.ID, inputContext, cwlDir, ifc, stepUnique, vm)
 		}
 		return flattened, nil
 	}
@@ -243,7 +245,7 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 	if repr := input.Types[0]; len(input.Types) == 1 {
 		switch repr.Type {
 		case typeArray:
-			f, err := input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc, stepUnique)
+			f, err := input.flatten(repr.Items[0], repr.Binding, inputContext, paramsDir, ifc, stepUnique, vm)
 			if err != nil {
 				return nil, err
 			}
@@ -254,7 +256,7 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 		case typeFile:
 			if file, ok := input.Provided.(map[interface{}]interface{}); ok {
 				// TODO: more strict type casting
-				path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
+				path, err := resolvePath(fmt.Sprintf("%v", file[fieldLocation]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext, input.SecondaryFiles, vm)
 				if err != nil {
 					return nil, err
 				}
@@ -266,7 +268,7 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 			if slice, ok := input.Provided.([]interface{}); ok {
 				for _, maybeFile := range slice {
 					if file, ok := maybeFile.(map[interface{}]interface{}); ok {
-						path, err := resolvePath(fmt.Sprintf("%v", file["location"]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext)
+						path, err := resolvePath(fmt.Sprintf("%v", file[fieldLocation]), paramsDir, ifc, stepUnique, input.Binding, input.ID, inputContext, input.SecondaryFiles, vm)
 						if err != nil {
 							return nil, err
 						}
@@ -322,7 +324,7 @@ func (input *Input) Resolve(params Parameters, reqs Requirements) error {
 // resolvePath converts relative paths to absolute ones, converted by the given
 // callback. It also sets inputContext path and reads file content according to
 // LoadContents binding.
-func resolvePath(path, dir string, ifc InputFileCallback, stepUnique string, binding *Binding, id string, inputContext map[string]interface{}) (string, error) {
+func resolvePath(path, dir string, ifc InputFileCallback, stepUnique string, binding *Binding, id string, inputContext map[string]interface{}, secondaryFiles SecondaryFiles, vm *otto.Otto) (string, error) {
 	if dir != "" && !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
 	}
@@ -334,12 +336,27 @@ func resolvePath(path, dir string, ifc InputFileCallback, stepUnique string, bin
 		if err != nil {
 			return "", err
 		}
-		inputContext[id].(map[string]string)["contents"] = content
+		inputContext[id].(map[string]string)[fieldContents] = content
 	}
 
-	path = ifc(stepUnique, path)
-	inputContext[id].(map[string]string)["path"] = path
-	return path, nil
+	stagedPath := ifc(stepUnique, path)
+	inputContext[id].(map[string]string)["path"] = stagedPath
+
+	// if there are any secondary files, pass those through the ifc as well to
+	// get them staged if necessary
+	if secondaryFiles != nil && vm != nil {
+		sfs, err := secondaryFiles.ToFiles(filepath.Dir(path), path, vm, false)
+		if err != nil {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		for _, f := range sfs {
+			file := f.(map[interface{}]interface{})
+			ifc(stepUnique, filepath.Join(parent, file[fieldLocation].(string)))
+		}
+	}
+
+	return stagedPath, nil
 }
 
 func getFileContents(path string) (string, error) {
@@ -385,7 +402,7 @@ func (ins Inputs) New(i interface{}) Inputs {
 // considering the provided params (and directories, for resolving relative
 // paths). It also fills in the given context, for use with interpreting
 // expressions.
-func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir, stepUnique string, ifc InputFileCallback, inputContext map[string]interface{}) (priors []string, result []string, err error) {
+func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir, stepUnique string, ifc InputFileCallback, inputContext map[string]interface{}, vm *otto.Otto) (result SortableArgs, err error) {
 	defer func() {
 		if i := recover(); i != nil {
 			err = fmt.Errorf("failed to resolve required inputs against provided params: %v", i)
@@ -394,27 +411,28 @@ func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDi
 
 	sort.Sort(ins)
 
-	for _, in := range ins {
+	for i, in := range ins {
 		err = in.Resolve(params, reqs)
 		if err != nil {
-			return priors, result, err
+			return result, err
 		}
 
-		theseIns, err := in.Flatten(inputContext, paramsDir, CWLDir, stepUnique, ifc)
+		theseIns, err := in.Flatten(inputContext, paramsDir, CWLDir, stepUnique, vm, ifc)
 		if err != nil {
-			return priors, result, err
+			return result, err
 		}
 
 		if in.Binding == nil {
 			continue
 		}
-		if in.Binding.Position < 0 {
-			priors = append(priors, theseIns...)
-		} else {
-			result = append(result, theseIns...)
-		}
+
+		result = append(result, &SortableArg{
+			arg:      theseIns,
+			position: in.Binding.Position,
+			i:        i,
+		})
 	}
-	return priors, result, nil
+	return result, nil
 }
 
 // Len for sorting.

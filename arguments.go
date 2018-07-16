@@ -83,14 +83,59 @@ func (args Arguments) Swap(i, j int) {
 	args[i], args[j] = args[j], args[i]
 }
 
+// SortableArg is used to describe the position of a command line argument from
+// Arguments or Inputs.
+type SortableArg struct {
+	arg      []string
+	position int
+	i        int
+}
+
+// SortableArgs is a sortable slice of SortableArg
+type SortableArgs []*SortableArg
+
+// Len for sorting.
+func (args SortableArgs) Len() int {
+	return len(args)
+}
+
+// Less for sorting.
+func (args SortableArgs) Less(i, j int) bool {
+	prev, next := args[i], args[j]
+	if prev.position == next.position {
+		if prev.i == next.i {
+			return i < j
+		}
+		return prev.i < next.i
+	}
+	return prev.position < next.position
+}
+
+// Swap for sorting.
+func (args SortableArgs) Swap(i, j int) {
+	args[i], args[j] = args[j], args[i]
+}
+
+// flatten returns the args of the component sortableArgs as one flat slice. You
+// should call .Sort() before calling this.
+func (args SortableArgs) flatten() []string {
+	var result []string
+	for _, sa := range args {
+		result = append(result, sa.arg...)
+	}
+	return result
+}
+
 // Resolve goes through the arguments with "valueFrom" properties and returns
 // concrete values from the given config. Also returns a bool, which if true
 // means shell metacharacters should be quoted.
-func (args Arguments) Resolve(config ResolveConfig) ([]string, bool) {
-	var result []string
+func (args Arguments) Resolve(config ResolveConfig) (SortableArgs, bool) {
+	var result SortableArgs
+	var sa *SortableArg
 	var shellQuote bool
 	sort.Sort(args)
 	for i, arg := range args {
+		position := 0
 		if arg.Binding != nil && arg.Binding.ValueFrom != nil {
 			// *** need to properly evaluate this if an expression?
 			str := arg.Binding.ValueFrom.string
@@ -103,8 +148,19 @@ func (args Arguments) Resolve(config ResolveConfig) ([]string, bool) {
 			if arg.Binding.ShellQuote {
 				shellQuote = true
 			}
+
+			position = arg.Binding.Position
 		}
-		result = append(result, args[i].Flatten()...)
+		if sa == nil {
+			sa = &SortableArg{
+				arg:      args[i].Flatten(),
+				position: position,
+				i:        i,
+			}
+			result = append(result, sa)
+		} else {
+			sa.arg = append(sa.arg, args[i].Flatten()...)
+		}
 	}
 	return result, shellQuote
 }

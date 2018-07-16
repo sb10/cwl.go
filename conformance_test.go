@@ -26,7 +26,6 @@ package cwl
 import (
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -66,8 +65,8 @@ func TestConformance(t *testing.T) {
 
 	// run each test specified there
 	done := 0
-	toDo := 48 // TODO: not yet fully compatible, working on conformance test by test, total 111
-	for _, test := range *c {
+	toDo := 50 // TODO: not yet fully compatible, working on conformance test by test, total 111
+	for i, test := range *c {
 		if *conTestNum != 0 {
 			done++
 			if done != *conTestNum {
@@ -125,7 +124,7 @@ func TestConformance(t *testing.T) {
 		for _, cmd := range cmds {
 			var out map[string]interface{}
 			out, erre = cmd.Execute(r.GetPriorOutputs())
-			if !assert.Nil(erre, test.Doc+" failed") {
+			if !assert.Nil(erre, fmt.Sprintf("[%d] %s failed: %s", i+1, test.Doc, erre)) {
 				break
 			}
 			r.SetOutput(cmd.UniqueID, out, cmd.Parameters)
@@ -150,7 +149,7 @@ func TestConformance(t *testing.T) {
 				}
 			}
 
-			assert.Equal(test.Output, output, test.Doc)
+			assert.Equal(test.Output, output, fmt.Sprintf("[%d] %s", i+1, test.Doc))
 		}
 
 		if *conTestNum != 0 {
@@ -162,65 +161,4 @@ func TestConformance(t *testing.T) {
 			break
 		}
 	}
-}
-
-// copyFile copies a file from src to dst. If src and dst files exist, and are
-// the same, then return success. Otherise, attempt to create a hard link
-// between the two files. If that fails, copy the file contents from src to dst.
-func copyFile(src, dst string) error {
-	// from https://stackoverflow.com/a/21067803/675083
-	sfi, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-	if !sfi.Mode().IsRegular() {
-		// cannot copy non-regular files (e.g., directories,
-		// symlinks, devices, etc.)
-		return fmt.Errorf("copyFile: non-regular source file %s (%q)", sfi.Name(), sfi.Mode().String())
-	}
-	dfi, err := os.Stat(dst)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-	} else {
-		if !(dfi.Mode().IsRegular()) {
-			return fmt.Errorf("copyFile: non-regular destination file %s (%q)", dfi.Name(), dfi.Mode().String())
-		}
-		if os.SameFile(sfi, dfi) {
-			return err
-		}
-	}
-	if err = os.Link(src, dst); err == nil {
-		return err
-	}
-	return copyFileContents(src, dst)
-}
-
-// copyFileContents copies the contents of the file named src to the file named
-// by dst. The file will be created if it does not already exist. If the
-// destination file exists, all it's contents will be replaced by the contents
-// of the source file.
-func copyFileContents(src, dst string) error {
-	// from https://stackoverflow.com/a/21067803/675083
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		cerr := out.Close()
-		if err == nil {
-			err = cerr
-		}
-	}()
-	if _, err = io.Copy(out, in); err != nil {
-		return err
-	}
-	err = out.Sync()
-	return err
 }
