@@ -50,7 +50,9 @@ func main() {
 # Tests
 
 Decode() tests run against the test cwl files in the cwl subdirectory for the
-latest release version of the CWL spec. To run all tests, just:
+latest release version of the CWL spec. There are also tests that run through
+all the official conformance tests that come with the CWL spec. To run all
+tests, just:
 
 ```sh
 go test
@@ -60,4 +62,10 @@ To run tests against a single file:
 
 ```sh
 go test -cwl scatter-valuefrom-wf3.cwl
+```
+
+To run a specific conformance test:
+
+```sh
+go test -ctest 50
 ```
