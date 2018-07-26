@@ -489,7 +489,10 @@ func (c *Command) resolveRequirments() (*otto.Otto, bool, []string, error) {
 			}
 		case reqWorkDir:
 			for _, entry := range req.Listing {
-				basename := entry.EntryName
+				basename, _, _, err := evaluateExpression(entry.EntryName, vm)
+				if err != nil {
+					return vm, viaShell, env, err
+				}
 				e := entry.Entry
 				contents, _, obj, err := evaluateExpression(e, vm)
 				if err != nil {

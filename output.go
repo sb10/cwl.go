@@ -67,7 +67,7 @@ func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (int
 		t = repr.Type
 		switch repr.Type {
 		case typeFile, typeInt, typeString:
-			paths, err := globPaths(o.Binding, dir)
+			paths, err := globPaths(o.Binding, dir, vm)
 			if err != nil {
 				return nil, err
 			}
@@ -145,11 +145,15 @@ func (o *Output) Resolve(dir, stdoutPath, stderrPath string, vm *otto.Otto) (int
 	return finalResult, nil
 }
 
-func globPaths(binding *Binding, dir string) ([]string, error) {
+func globPaths(binding *Binding, dir string, vm *otto.Otto) ([]string, error) {
 	if binding != nil && binding.Glob != nil {
 		var paths []string
 		for _, glob := range binding.Glob {
-			files, err := filepath.Glob(dir + "/" + glob)
+			eglob, _, _, err := evaluateExpression(glob, vm)
+			if err != nil {
+				return nil, err
+			}
+			files, err := filepath.Glob(dir + "/" + eglob)
 			if err != nil {
 				return nil, err
 			}
