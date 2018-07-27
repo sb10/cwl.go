@@ -152,9 +152,6 @@ func NewResolver(root *Root, config ResolveConfig, cwlDir string, optionalOutput
 // run. The path to the decoded param file's dir must be provided to resolve
 // relative paths.
 //
-// Also resolves any requirments, carrying out anything actionble, which may
-// involve creating files according to an InitialWorkDirRequirement.
-//
 // If resolving a Workflow, you must be sure to Execute() all of the returned
 // Commands in the appropriate order, and then call Output() on this to get the
 // final output value.

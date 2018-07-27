@@ -285,7 +285,11 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 			addPrefix = input.Provided.(bool)
 		default:
 			inputContext[input.ID] = input.Provided
-			flattened = append(flattened, fmt.Sprintf("%v", input.Provided))
+			if input.RequiredType != nil {
+				flattened = append(flattened, input.flattenWithRequiredType()...)
+			} else {
+				flattened = append(flattened, fmt.Sprintf("%v", input.Provided))
+			}
 		}
 	}
 
@@ -298,9 +302,45 @@ func (input *Input) Flatten(inputContext map[string]interface{}, paramsDir, cwlD
 
 // Resolve sets Provided if the supplied params have our ID. It also handles
 // requirements.
-func (input *Input) Resolve(params Parameters, reqs Requirements) error {
+func (input *Input) Resolve(params Parameters, reqs Requirements, customTypes map[string]*Type, vm *otto.Otto) error {
 	if provided, ok := params[input.ID]; ok {
-		input.Provided = provided
+		if input.Binding != nil && input.Binding.ValueFrom != nil {
+			// *** resolving valueFrom should also apply if not provided, but
+			// we get a value from defaults...
+			wasCustom := false
+			if customTypes != nil && len(input.Types) == 1 {
+				t := customTypes[input.Types[0].Type]
+				if t != nil {
+					self := make(map[string]interface{})
+					for _, f := range t.Fields {
+						// *** not actually paying attention to how the type is
+						// defined...
+						if val, exists := provided.(map[interface{}]interface{})[f.Name]; exists {
+							self[f.Name] = val
+						}
+					}
+					err := vm.Set("self", self)
+					if err != nil {
+						return err
+					}
+					wasCustom = true
+				}
+			}
+			if !wasCustom {
+				err := vm.Set("self", provided)
+				if err != nil {
+					return err
+				}
+			}
+
+			str, _, _, err := evaluateExpression(input.Binding.ValueFrom.string, vm)
+			if err != nil {
+				return err
+			}
+			input.Provided = str
+		} else {
+			input.Provided = provided
+		}
 	}
 
 	if input.Default == nil && input.Binding == nil && input.Provided == nil {
@@ -402,7 +442,7 @@ func (ins Inputs) New(i interface{}) Inputs {
 // considering the provided params (and directories, for resolving relative
 // paths). It also fills in the given context, for use with interpreting
 // expressions.
-func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir, stepUnique string, ifc InputFileCallback, inputContext map[string]interface{}, vm *otto.Otto) (result SortableArgs, err error) {
+func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDir, stepUnique string, customTypes map[string]*Type, ifc InputFileCallback, inputContext map[string]interface{}, vm *otto.Otto) (result SortableArgs, err error) {
 	defer func() {
 		if i := recover(); i != nil {
 			err = fmt.Errorf("failed to resolve required inputs against provided params: %v", i)
@@ -412,7 +452,7 @@ func (ins Inputs) Resolve(reqs Requirements, params Parameters, paramsDir, CWLDi
 	sort.Sort(ins)
 
 	for i, in := range ins {
-		err = in.Resolve(params, reqs)
+		err = in.Resolve(params, reqs, customTypes, vm)
 		if err != nil {
 			return result, err
 		}

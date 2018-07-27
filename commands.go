@@ -56,6 +56,8 @@ type Command struct {
 	// output with a source of this Command's output.
 	ParentOutput *Output
 
+	customTypes map[string]*Type
+
 	*Resolver
 }
 
@@ -84,6 +86,12 @@ func NewCommand(uniqueID string, dependencies []string, resolver *Resolver) *Com
 // For Commands that are for ExpressionTools, instead of running a command line,
 // it just interprets the expression to fill in the output.
 func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[string]interface{}, error) {
+	// resolve imports
+	err := c.resolveImports()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve imports: %v", err)
+	}
+
 	// resolve args
 	arguments, shellQuote := c.Workflow.Arguments.Resolve(c.Config)
 
@@ -138,7 +146,7 @@ func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[stri
 		flatOutIndex = val.(int)
 		flatOutIndexFound = true
 	}
-	inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.Name, c.IFC, c.InputContext, otto.New())
+	inputs, err := c.Workflow.Inputs.Resolve(c.Workflow.Requirements, c.Parameters, c.ParamsDir, c.CWLDir, c.Name, c.customTypes, c.IFC, c.InputContext, otto.New())
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve required inputs: %v", err)
 	}
@@ -429,6 +437,46 @@ func (c *Command) Execute(priorOuts map[string]map[string]interface{}) (map[stri
 	}
 
 	return out, err
+}
+
+// resolveImports loads imports specified in requirmentes and stores relevant
+// information for later use.
+func (c *Command) resolveImports() error {
+	for _, req := range c.Workflow.Requirements {
+		if req.Import == "" {
+			continue
+		}
+
+		path := req.Import
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(c.Resolver.CWLDir, req.Import)
+		}
+		cwlF, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err = cwlF.Close()
+		}()
+
+		root := NewCWL()
+		err = root.Decode(cwlF)
+		if err != nil {
+			return err
+		}
+
+		switch root.Class {
+		case classSchema:
+			if c.customTypes == nil {
+				c.customTypes = make(map[string]*Type)
+			}
+			for _, t := range root.Types {
+				c.customTypes[req.Import+"#"+t.Name] = &t
+			}
+		}
+	}
+
+	return nil
 }
 
 // resolveRequirments handles things like InlineJavascriptRequirement, creates

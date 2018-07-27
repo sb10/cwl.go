@@ -43,6 +43,7 @@ type Root struct {
 	Steps        Steps
 	ID           string // ID only appears if this Root is a step in "steps"
 	Expression   string // appears only if Class is "ExpressionTool"
+	Types        []Type // appears only if Class is "SchemaDefRequirement"
 }
 
 // UnmarshalMap decode map[string]interface{} to *Root.
@@ -85,6 +86,8 @@ func (root *Root) UnmarshalMap(docs map[string]interface{}) error {
 			root.ID = val.(string)
 		case fieldExpression:
 			root.Expression = val.(string)
+		case fieldTypes:
+			root.Types = Type{}.NewList(val)
 		}
 	}
 	return nil

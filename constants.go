@@ -113,6 +113,7 @@ const (
 	classWorkflow   = "Workflow"
 	classCommand    = "CommandLineTool"
 	classExpression = "ExpressionTool"
+	classSchema     = "SchemaDefRequirement"
 )
 
 // requirements
